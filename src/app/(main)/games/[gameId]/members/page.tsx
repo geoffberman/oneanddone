@@ -1,0 +1,105 @@
+import { auth } from "@/auth";
+import { notFound } from "next/navigation";
+import { getGameById, getGameMembers, getUserRole } from "@/lib/queries/games";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Users, Copy } from "lucide-react";
+import { CopyInviteButton } from "./copy-invite-button";
+
+export default async function MembersPage({
+  params,
+}: {
+  params: Promise<{ gameId: string }>;
+}) {
+  const { gameId: gidStr } = await params;
+  const gameId = parseInt(gidStr);
+  const session = await auth();
+  if (!session?.user?.id) notFound();
+  const userId = session!.user!.id;
+
+  const [game, role, members] = await Promise.all([
+    getGameById(gameId),
+    getUserRole(gameId, userId),
+    getGameMembers(gameId),
+  ]);
+  if (!game || !role) notFound();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Members</h1>
+        <p className="text-sm text-neutral-500">
+          {game.name} &middot; {members.length} members
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-neutral-500" />
+              <CardTitle className="text-base">Invite Code</CardTitle>
+            </div>
+            <CopyInviteButton inviteCode={game.inviteCode} />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="font-mono text-lg font-bold tracking-widest">
+            {game.inviteCode}
+          </p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Share this code with friends so they can join your game.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Players ({members.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                className="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2.5"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={member.userImage || undefined} />
+                    <AvatarFallback className="text-xs">
+                      {member.userName?.charAt(0)?.toUpperCase() || "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium">
+                    {member.userName}
+                    {member.userId === userId && (
+                      <span className="ml-1 text-xs text-neutral-400">
+                        (you)
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <Badge
+                  variant={
+                    member.role === "manager" ? "default" : "secondary"
+                  }
+                >
+                  {member.role}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
