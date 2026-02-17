@@ -3,7 +3,7 @@
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { games, gameMembers, seasons } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { generateInviteCode } from "@/lib/utils/invite-code";
 import { revalidatePath } from "next/cache";
 
@@ -22,21 +22,27 @@ export async function createGame(name: string) {
 
   const inviteCode = generateInviteCode();
 
+  const now = new Date();
   const [game] = await db
     .insert(games)
     .values({
+      id: sql`nextval('games_id_seq')`,
       name,
       seasonId: season.id,
       createdBy: session.user.id,
       inviteCode,
+      createdAt: now,
+      updatedAt: now,
     })
     .returning();
 
   // Add creator as a manager
   await db.insert(gameMembers).values({
+    id: sql`nextval('game_members_id_seq')`,
     gameId: game.id,
     userId: session.user.id,
     role: "manager",
+    joinedAt: now,
   });
 
   revalidatePath("/dashboard");
@@ -75,9 +81,11 @@ export async function joinGame(inviteCode: string) {
   if (existing) throw new Error("You are already a member of this game");
 
   await db.insert(gameMembers).values({
+    id: sql`nextval('game_members_id_seq')`,
     gameId: game.id,
     userId: session.user.id,
     role: "player",
+    joinedAt: new Date(),
   });
 
   revalidatePath("/dashboard");

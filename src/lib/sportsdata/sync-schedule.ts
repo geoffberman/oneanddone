@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { seasons, tournaments, golfers } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   fetchTournamentsBySeason,
   fetchPlayers,
@@ -19,6 +19,8 @@ export async function syncSchedule() {
     .limit(1);
 
   let season;
+  const now = new Date();
+
   if (existingSeason) {
     const [updated] = await db
       .update(seasons)
@@ -30,7 +32,7 @@ export async function syncSchedule() {
         endDate: currentSeason.EndDate
           ? new Date(currentSeason.EndDate)
           : null,
-        updatedAt: new Date(),
+        updatedAt: now,
       })
       .where(eq(seasons.year, currentSeason.Season))
       .returning();
@@ -39,6 +41,7 @@ export async function syncSchedule() {
     const [inserted] = await db
       .insert(seasons)
       .values({
+        id: sql`nextval('seasons_id_seq')`,
         year: currentSeason.Season,
         name: currentSeason.Description || `${currentSeason.Season} PGA Tour`,
         startDate: currentSeason.StartDate
@@ -48,6 +51,8 @@ export async function syncSchedule() {
           ? new Date(currentSeason.EndDate)
           : null,
         externalSeasonId: currentSeason.Season,
+        createdAt: now,
+        updatedAt: now,
       })
       .returning();
     season = inserted;
@@ -78,11 +83,12 @@ export async function syncSchedule() {
           isOver: t.IsOver,
           isInProgress: t.IsInProgress,
           canceled: t.Canceled,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(tournaments.externalTournamentId, t.TournamentID));
     } else {
       await db.insert(tournaments).values({
+        id: sql`nextval('tournaments_id_seq')`,
         externalTournamentId: t.TournamentID,
         seasonId: season.id,
         name: t.Name,
@@ -97,6 +103,8 @@ export async function syncSchedule() {
         isOver: t.IsOver,
         isInProgress: t.IsInProgress,
         canceled: t.Canceled,
+        createdAt: now,
+        updatedAt: now,
       });
     }
   }
@@ -119,16 +127,19 @@ export async function syncSchedule() {
           lastName: p.LastName,
           country: p.Country,
           photoUrl: p.PhotoUrl,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(golfers.externalPlayerId, p.PlayerID));
     } else {
       await db.insert(golfers).values({
+        id: sql`nextval('golfers_id_seq')`,
         externalPlayerId: p.PlayerID,
         firstName: p.FirstName,
         lastName: p.LastName,
         country: p.Country,
         photoUrl: p.PhotoUrl,
+        createdAt: now,
+        updatedAt: now,
       });
     }
   }

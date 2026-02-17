@@ -7,7 +7,7 @@ import {
   subGameTournaments,
   gameMembers,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 async function requireManager(gameId: number) {
@@ -40,12 +40,19 @@ export async function createSubGame(
 
   const [subGame] = await db
     .insert(subGames)
-    .values({ gameId, name, description })
+    .values({
+      id: sql`nextval('sub_games_id_seq')`,
+      gameId,
+      name,
+      description,
+      createdAt: new Date(),
+    })
     .returning();
 
   if (tournamentIds.length > 0) {
     await db.insert(subGameTournaments).values(
       tournamentIds.map((tournamentId) => ({
+        id: sql`nextval('sub_game_tournaments_id_seq')`,
         subGameId: subGame.id,
         tournamentId,
       }))
@@ -78,6 +85,7 @@ export async function updateSubGame(
   if (tournamentIds.length > 0) {
     await db.insert(subGameTournaments).values(
       tournamentIds.map((tournamentId) => ({
+        id: sql`nextval('sub_game_tournaments_id_seq')`,
         subGameId,
         tournamentId,
       }))

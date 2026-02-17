@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { tournaments, golfers, tournamentFields } from "@/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { fetchLeaderboard } from "./client";
 
 export async function syncField() {
@@ -71,14 +71,16 @@ export async function syncField() {
           .limit(1);
 
         if (!golfer) {
-          // Insert golfer if not already in our DB
           const [newGolfer] = await db
             .insert(golfers)
             .values({
+              id: sql`nextval('golfers_id_seq')`,
               externalPlayerId: player.PlayerID,
               firstName: player.FirstName,
               lastName: player.LastName,
               country: player.Country,
+              createdAt: now,
+              updatedAt: now,
             })
             .returning();
           golfer = newGolfer;
@@ -137,10 +139,13 @@ async function upsertFieldEntry(
       .where(eq(tournamentFields.id, existing.id));
   } else {
     await db.insert(tournamentFields).values({
+      id: sql`nextval('tournament_fields_id_seq')`,
       tournamentId,
       golferId,
       isWithdrawn,
       withdrawnBeforeRound1: isWithdrawn && !tournamentInProgress,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
   }
 }

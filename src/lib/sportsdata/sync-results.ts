@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { tournaments, golfers, tournamentResults, picks } from "@/db/schema";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { fetchLeaderboard } from "./client";
 
 export async function syncResults() {
@@ -13,7 +13,6 @@ export async function syncResults() {
         eq(tournaments.canceled, false),
         or(
           eq(tournaments.isInProgress, true),
-          // Also check tournaments that started today but might not be marked in-progress yet
           eq(tournaments.isOver, false)
         )
       )
@@ -81,6 +80,7 @@ export async function syncResults() {
             .where(eq(tournamentResults.id, existing.id));
         } else {
           await db.insert(tournamentResults).values({
+            id: sql`nextval('tournament_results_id_seq')`,
             tournamentId: tournament.id,
             golferId: golfer.id,
             position: player.Rank || null,
@@ -90,6 +90,8 @@ export async function syncResults() {
             madeCut: player.MadeCut === 1,
             isWithdrawn: player.IsWithdrawn,
             rounds: player.Rounds?.length || 0,
+            createdAt: now,
+            updatedAt: now,
           });
         }
 
@@ -118,7 +120,6 @@ export async function syncResults() {
 }
 
 async function updatePickEarnings(tournamentId: number) {
-  // Get all picks for this tournament that have an active golfer
   const tournamentPicks = await db
     .select()
     .from(picks)
@@ -128,7 +129,6 @@ async function updatePickEarnings(tournamentId: number) {
     const activeGolferId = pick.activeGolferId;
     if (!activeGolferId) continue;
 
-    // Look up the result for the active golfer
     const [result] = await db
       .select()
       .from(tournamentResults)

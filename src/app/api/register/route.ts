@@ -38,9 +38,11 @@ export async function POST(req: Request) {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     await db.insert(users).values({
+      id: crypto.randomUUID(),
       name,
       email,
       password: hashedPassword,
+      createdAt: new Date(),
     });
 
     return NextResponse.json({ success: true }, { status: 201 });

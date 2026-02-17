@@ -5,7 +5,7 @@ import {
   picks,
   usedGolfers,
 } from "@/db/schema";
-import { eq, and, isNull, lte } from "drizzle-orm";
+import { eq, and, isNull, lte, sql } from "drizzle-orm";
 
 export async function resolvePicks() {
   const now = new Date();
@@ -100,10 +100,12 @@ export async function resolvePicks() {
 
       if (!existingUsed) {
         await db.insert(usedGolfers).values({
+          id: sql`nextval('used_golfers_id_seq')`,
           gameId: pick.gameId,
           userId: pick.userId,
           golferId: activeGolferId,
           tournamentId: tournament.id,
+          createdAt: new Date(),
         });
       }
 
