@@ -2,8 +2,8 @@
 
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { picks, gameMembers } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { picks, gameMembers, golfers } from "@/db/schema";
+import { eq, and, inArray } from "drizzle-orm";
 import { validatePick } from "@/lib/utils/pick-validation";
 import { revalidatePath } from "next/cache";
 
@@ -105,4 +105,100 @@ export async function getUserPick(gameId: number, tournamentId: number) {
     .limit(1);
 
   return pick || null;
+}
+
+async function getGolferName(golferId: number): Promise<string> {
+  const [g] = await db
+    .select({ firstName: golfers.firstName, lastName: golfers.lastName })
+    .from(golfers)
+    .where(eq(golfers.id, golferId))
+    .limit(1);
+  return g ? `${g.firstName} ${g.lastName}` : "Unknown";
+}
+
+async function getGolferNames(
+  golferIds: number[]
+): Promise<Record<number, string>> {
+  if (golferIds.length === 0) return {};
+  const rows = await db
+    .select({
+      id: golfers.id,
+      firstName: golfers.firstName,
+      lastName: golfers.lastName,
+    })
+    .from(golfers)
+    .where(inArray(golfers.id, golferIds));
+
+  const map: Record<number, string> = {};
+  for (const r of rows) {
+    map[r.id] = `${r.firstName} ${r.lastName}`;
+  }
+  return map;
+}
+
+export async function getUserPickWithNames(
+  gameId: number,
+  tournamentId: number
+) {
+  const session = await auth();
+  if (!session?.user?.id) return null;
+
+  const pick = await getUserPick(gameId, tournamentId);
+  if (!pick) return null;
+
+  const primaryName = await getGolferName(pick.primaryGolferId);
+  const alternateName = pick.alternateGolferId
+    ? await getGolferName(pick.alternateGolferId)
+    : null;
+
+  return { primaryName, alternateName };
+}
+
+export async function getUserPicksForTournament(
+  tournamentId: number,
+  gameIds: number[]
+): Promise<
+  Record<number, { primaryName: string; alternateName: string | null }>
+> {
+  const session = await auth();
+  if (!session?.user?.id || gameIds.length === 0) return {};
+
+  const userPicks = await db
+    .select({
+      gameId: picks.gameId,
+      primaryGolferId: picks.primaryGolferId,
+      alternateGolferId: picks.alternateGolferId,
+    })
+    .from(picks)
+    .where(
+      and(
+        eq(picks.userId, session.user.id),
+        eq(picks.tournamentId, tournamentId),
+        inArray(picks.gameId, gameIds)
+      )
+    );
+
+  if (userPicks.length === 0) return {};
+
+  // Gather all golfer IDs and fetch names in one query
+  const golferIds = new Set<number>();
+  for (const p of userPicks) {
+    golferIds.add(p.primaryGolferId);
+    if (p.alternateGolferId) golferIds.add(p.alternateGolferId);
+  }
+  const names = await getGolferNames([...golferIds]);
+
+  const result: Record<
+    number,
+    { primaryName: string; alternateName: string | null }
+  > = {};
+  for (const p of userPicks) {
+    result[p.gameId] = {
+      primaryName: names[p.primaryGolferId] || "Unknown",
+      alternateName: p.alternateGolferId
+        ? names[p.alternateGolferId] || "Unknown"
+        : null,
+    };
+  }
+  return result;
 }

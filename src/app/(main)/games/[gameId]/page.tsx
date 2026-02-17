@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { notFound } from "next/navigation";
 import { getGameById, getUserRole } from "@/lib/queries/games";
 import { getCurrentTournament } from "@/lib/queries/tournaments";
-import { getUserPick } from "@/lib/actions/picks";
+import { getUserPickWithNames } from "@/lib/actions/picks";
 import { getAnnouncements } from "@/lib/actions/announcements";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,7 +49,7 @@ export default async function GameHomePage({
   if (!game || !role) notFound();
 
   const currentPick = currentTournament
-    ? await getUserPick(gameId, currentTournament.id)
+    ? await getUserPickWithNames(gameId, currentTournament.id)
     : null;
 
   const isManager = role === "manager";
@@ -117,17 +117,27 @@ export default async function GameHomePage({
               </div>
             )}
             {currentPick ? (
-              <div className="flex items-center justify-between rounded-lg bg-green-50 px-4 py-3">
-                <p className="text-sm font-medium text-green-800">
-                  Pick submitted
-                </p>
-                <Button asChild variant="outline" size="sm">
-                  <Link
-                    href={`/games/${gameId}/picks/${currentTournament.id}`}
-                  >
-                    View / Change
-                  </Link>
-                </Button>
+              <div className="rounded-lg bg-green-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-green-800">
+                    Pick submitted
+                  </p>
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      href={`/games/${gameId}/picks/${currentTournament.id}`}
+                    >
+                      View / Change
+                    </Link>
+                  </Button>
+                </div>
+                <div className="mt-2 space-y-0.5 text-sm text-green-700">
+                  <p>{currentPick.primaryName}</p>
+                  {currentPick.alternateName && (
+                    <p className="text-green-600">
+                      Alt: {currentPick.alternateName}
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               <Button

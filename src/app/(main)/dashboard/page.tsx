@@ -2,13 +2,14 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { getUserGames } from "@/lib/actions/games";
 import { getCurrentTournament } from "@/lib/queries/tournaments";
+import { getUserPicksForTournament } from "@/lib/actions/picks";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Trophy, Calendar, Clock } from "lucide-react";
+import { Trophy, Calendar, Clock, Check } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { AccessCodeForm } from "./access-code-form";
 import { ensureSchema } from "@/lib/ensure-schema";
@@ -18,6 +19,14 @@ export default async function DashboardPage() {
   await ensureSchema();
   const games = await getUserGames();
   const currentTournament = await getCurrentTournament();
+
+  // Fetch all picks for current tournament across all games in one query
+  const picksByGame = currentTournament
+    ? await getUserPicksForTournament(
+        currentTournament.id,
+        games.map((g) => g.gameId)
+      )
+    : {};
 
   const pickDeadline = currentTournament
     ? currentTournament.firstTeeTime || currentTournament.startDate
@@ -64,6 +73,23 @@ export default async function DashboardPage() {
                           <span>Picks lock {formatDate(pickDeadline)}</span>
                         </div>
                       )}
+                      <div className="flex items-start gap-1.5 pt-1">
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
+                        {picksByGame[game.gameId] ? (
+                          <span>
+                            Your pick: {picksByGame[game.gameId].primaryName}
+                            {picksByGame[game.gameId].alternateName && (
+                              <span className="text-neutral-400">
+                                {" "}(Alt: {picksByGame[game.gameId].alternateName})
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-neutral-400">
+                            No pick entered yet
+                          </span>
+                        )}
+                      </div>
                     </CardContent>
                   )}
                 </Card>
