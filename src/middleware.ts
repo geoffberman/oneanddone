@@ -4,14 +4,17 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const isOnAuthPage =
     req.nextUrl.pathname.startsWith("/login") ||
-    req.nextUrl.pathname.startsWith("/register");
+    req.nextUrl.pathname.startsWith("/register") ||
+    req.nextUrl.pathname.startsWith("/forgot-password") ||
+    req.nextUrl.pathname.startsWith("/reset-password");
   const isOnApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
   const isOnApiRegister = req.nextUrl.pathname.startsWith("/api/register");
+  const isOnApiPassword = req.nextUrl.pathname.startsWith("/api/forgot-password") || req.nextUrl.pathname.startsWith("/api/reset-password");
   const isOnCronApi = req.nextUrl.pathname.startsWith("/api/cron");
   const isOnLandingPage = req.nextUrl.pathname === "/";
 
   // Allow public routes
-  if (isOnApiAuth || isOnApiRegister || isOnCronApi || isOnLandingPage) {
+  if (isOnApiAuth || isOnApiRegister || isOnApiPassword || isOnCronApi || isOnLandingPage) {
     return;
   }
 

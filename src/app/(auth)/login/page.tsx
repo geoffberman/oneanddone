@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { signIn } from "@/auth";
 import { redirect } from "next/navigation";
+import { AuthError } from "next-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,7 +38,12 @@ export default async function LoginPage({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {error && (
+          {error === "PasswordReset" ? (
+            <div className="rounded-md bg-green-50 p-3 text-center text-sm text-green-700">
+              Password reset successfully. Please sign in with your new
+              password.
+            </div>
+          ) : error ? (
             <div className="rounded-md bg-red-50 p-3 text-center text-sm text-red-600">
               {error === "CredentialsSignin"
                 ? "Invalid email or password."
@@ -45,7 +51,7 @@ export default async function LoginPage({
                   ? "An account with this email already exists. Please sign in with your email and password instead."
                   : "Something went wrong. Please try again."}
             </div>
-          )}
+          ) : null}
 
           <form
             action={async (formData: FormData) => {
@@ -57,13 +63,10 @@ export default async function LoginPage({
                   redirectTo: "/dashboard",
                 });
               } catch (error) {
-                if (
-                  error instanceof Error &&
-                  error.message === "NEXT_REDIRECT"
-                ) {
-                  throw error;
+                if (error instanceof AuthError) {
+                  redirect("/login?error=CredentialsSignin");
                 }
-                redirect("/login?error=CredentialsSignin");
+                throw error;
               }
             }}
             className="space-y-3"
@@ -101,6 +104,14 @@ export default async function LoginPage({
             <Button type="submit" className="w-full" size="lg">
               Sign In
             </Button>
+            <div className="text-right">
+              <Link
+                href="/forgot-password"
+                className="text-sm text-green-600 hover:text-green-700"
+              >
+                Forgot password?
+              </Link>
+            </div>
           </form>
 
           <div className="relative">

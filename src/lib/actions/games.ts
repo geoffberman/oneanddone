@@ -34,7 +34,11 @@ export async function createGame(name: string) {
       createdAt: now,
       updatedAt: now,
     })
-    .returning();
+    .returning({
+      id: games.id,
+      name: games.name,
+      inviteCode: games.inviteCode,
+    });
 
   // Add creator as a manager
   await db.insert(gameMembers).values({
@@ -54,7 +58,12 @@ export async function joinGame(inviteCode: string) {
   if (!session?.user?.id) throw new Error("Not authenticated");
 
   const [game] = await db
-    .select()
+    .select({
+      id: games.id,
+      name: games.name,
+      inviteCode: games.inviteCode,
+      isActive: games.isActive,
+    })
     .from(games)
     .where(
       and(
@@ -68,7 +77,7 @@ export async function joinGame(inviteCode: string) {
 
   // Check if already a member
   const [existing] = await db
-    .select()
+    .select({ id: gameMembers.id })
     .from(gameMembers)
     .where(
       and(
