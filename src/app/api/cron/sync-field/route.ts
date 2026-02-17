@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncField } from "@/lib/sportsdata/sync-field";
 
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -13,7 +15,10 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("sync-field error:", error);
     return NextResponse.json(
-      { error: "Failed to sync field" },
+      {
+        error: "Failed to sync field",
+        message: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
