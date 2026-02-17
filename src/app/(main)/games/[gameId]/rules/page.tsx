@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { notFound } from "next/navigation";
-import { getGameById, getUserRole } from "@/lib/queries/games";
+import { getGameWithRules, getUserRole } from "@/lib/queries/games";
 import {
   Card,
   CardContent,
@@ -21,7 +21,7 @@ export default async function PoolRulesPage({
   if (!session?.user?.id) notFound();
 
   const [game, role] = await Promise.all([
-    getGameById(gameId),
+    getGameWithRules(gameId),
     getUserRole(gameId, session.user.id),
   ]);
   if (!game || !role) notFound();

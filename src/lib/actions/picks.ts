@@ -18,7 +18,7 @@ export async function submitPick(
 
   // Check user is a member of this game
   const [membership] = await db
-    .select()
+    .select({ id: gameMembers.id })
     .from(gameMembers)
     .where(
       and(
@@ -45,7 +45,7 @@ export async function submitPick(
 
   // Upsert the pick
   const [existingPick] = await db
-    .select()
+    .select({ id: picks.id })
     .from(picks)
     .where(
       and(
@@ -93,7 +93,14 @@ export async function getUserPick(gameId: number, tournamentId: number) {
   if (!session?.user?.id) return null;
 
   const [pick] = await db
-    .select()
+    .select({
+      id: picks.id,
+      gameId: picks.gameId,
+      userId: picks.userId,
+      tournamentId: picks.tournamentId,
+      primaryGolferId: picks.primaryGolferId,
+      alternateGolferId: picks.alternateGolferId,
+    })
     .from(picks)
     .where(
       and(

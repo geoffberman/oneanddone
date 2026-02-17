@@ -13,6 +13,26 @@ export async function getGameById(gameId: number) {
       inviteCode: games.inviteCode,
       isActive: games.isActive,
       createdAt: games.createdAt,
+    })
+    .from(games)
+    .innerJoin(seasons, eq(games.seasonId, seasons.id))
+    .where(eq(games.id, gameId))
+    .limit(1);
+
+  return game ?? null;
+}
+
+export async function getGameWithRules(gameId: number) {
+  const [game] = await db
+    .select({
+      id: games.id,
+      name: games.name,
+      seasonId: games.seasonId,
+      seasonYear: seasons.year,
+      createdBy: games.createdBy,
+      inviteCode: games.inviteCode,
+      isActive: games.isActive,
+      createdAt: games.createdAt,
       rules: games.rules,
     })
     .from(games)

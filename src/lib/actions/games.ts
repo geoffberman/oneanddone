@@ -159,7 +159,7 @@ export async function addMemberByEmail(gameId: number, email: string) {
 
   // Verify caller is a manager
   const [membership] = await db
-    .select()
+    .select({ id: gameMembers.id })
     .from(gameMembers)
     .where(
       and(
