@@ -15,7 +15,7 @@ export async function syncSchedule() {
   const [existingSeason] = await db
     .select()
     .from(seasons)
-    .where(eq(seasons.year, currentSeason.Season))
+    .where(eq(seasons.year, currentSeason.SeasonID))
     .limit(1);
 
   let season;
@@ -24,7 +24,7 @@ export async function syncSchedule() {
     const [updated] = await db
       .update(seasons)
       .set({
-        name: currentSeason.Description || `${currentSeason.Season} PGA Tour`,
+        name: currentSeason.Description || `${currentSeason.SeasonID} PGA Tour`,
         startDate: currentSeason.StartDate
           ? new Date(currentSeason.StartDate)
           : null,
@@ -33,12 +33,12 @@ export async function syncSchedule() {
           : null,
         updatedAt: now,
       })
-      .where(eq(seasons.year, currentSeason.Season))
+      .where(eq(seasons.year, currentSeason.SeasonID))
       .returning();
     season = updated;
   } else {
     const seasonName =
-      currentSeason.Description || `${currentSeason.Season} PGA Tour`;
+      currentSeason.Description || `${currentSeason.SeasonID} PGA Tour`;
     const startDate = currentSeason.StartDate
       ? new Date(currentSeason.StartDate)
       : null;
@@ -48,7 +48,7 @@ export async function syncSchedule() {
 
     const rows = await db.execute(sql`
       INSERT INTO seasons (year, name, start_date, end_date, external_season_id, created_at, updated_at)
-      VALUES (${currentSeason.Season}, ${seasonName}, ${startDate}, ${endDate}, ${currentSeason.Season}, ${now}, ${now})
+      VALUES (${currentSeason.SeasonID}, ${seasonName}, ${startDate}, ${endDate}, ${currentSeason.SeasonID}, ${now}, ${now})
       RETURNING id, year, name, start_date, end_date, external_season_id, created_at, updated_at
     `);
     season = {
@@ -59,7 +59,7 @@ export async function syncSchedule() {
   }
 
   // Fetch tournaments for the season
-  const apiTournaments = await fetchTournamentsBySeason(currentSeason.Season);
+  const apiTournaments = await fetchTournamentsBySeason(currentSeason.SeasonID);
 
   for (const t of apiTournaments) {
     const [existing] = await db

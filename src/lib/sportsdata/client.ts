@@ -42,6 +42,7 @@ export async function fetchCurrentSeason(): Promise<SportsDataSeason> {
 
 // SportsData.io API response types
 export interface SportsDataSeason {
+  SeasonID: number;
   Season: number;
   Description: string;
   StartDate: string;
