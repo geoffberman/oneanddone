@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("sync-schedule error:", error);
     return NextResponse.json(
-      { error: "Failed to sync schedule" },
+      {
+        error: "Failed to sync schedule",
+        message: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
