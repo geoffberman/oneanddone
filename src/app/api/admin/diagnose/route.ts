@@ -116,6 +116,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: "Password updated" });
     }
 
+    if (action === "migrate") {
+      // Add missing password column to users table
+      const migrationResults: string[] = [];
+
+      try {
+        // Check if password column already exists
+        const check = await db.execute(sql`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'users' AND column_name = 'password'
+        `);
+
+        if (check.rows.length > 0) {
+          migrationResults.push("password column already exists");
+        } else {
+          await db.execute(sql`ALTER TABLE users ADD COLUMN password text`);
+          migrationResults.push("Added password column to users table");
+        }
+      } catch (e) {
+        migrationResults.push(`password column error: ${String(e)}`);
+      }
+
+      return NextResponse.json({ migrations: migrationResults });
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
     console.error("[Admin Diagnose]", err);
