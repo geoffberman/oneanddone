@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { tournaments, golfers } from "@/db/schema";
-import { eq, and, gte, lte, or, sql } from "drizzle-orm";
+import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import { fetchLeaderboard } from "./client";
 
 export async function syncField() {
@@ -62,10 +62,12 @@ export async function syncField() {
 
       // Bulk upsert any golfers not yet in our DB
       const playerIds = players.map((p) => p.PlayerID);
-      const existingGolfers = await db
-        .select({ id: golfers.id, externalPlayerId: golfers.externalPlayerId })
-        .from(golfers)
-        .where(sql`${golfers.externalPlayerId} = ANY(${playerIds})`);
+      const existingGolfers = playerIds.length > 0
+        ? await db
+            .select({ id: golfers.id, externalPlayerId: golfers.externalPlayerId })
+            .from(golfers)
+            .where(inArray(golfers.externalPlayerId, playerIds))
+        : [];
 
       const existingMap = new Map(existingGolfers.map((g) => [g.externalPlayerId, g.id]));
 
@@ -123,5 +125,9 @@ export async function syncField() {
     }
   }
 
-  return results;
+  return {
+    tournamentsFound: allTournaments.length,
+    tournamentNames: allTournaments.map((t) => t.name),
+    details: results,
+  };
 }
