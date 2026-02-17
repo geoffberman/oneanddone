@@ -21,9 +21,11 @@ export function AddMemberForm({ gameId }: { gameId: number }) {
       if (!result.success) {
         toast.error(result.error);
       } else {
-        toast.success(
-          `${result.name || email.trim()} has been added and notified by email.`
-        );
+        const who = result.name || email.trim();
+        const msg = result.created
+          ? `Account created for ${who}. They'll receive an invite email to set up their password.`
+          : `${who} has been added and notified by email.`;
+        toast.success(msg);
         setEmail("");
       }
     } catch {

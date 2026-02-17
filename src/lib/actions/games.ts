@@ -2,11 +2,12 @@
 
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { games, gameMembers, seasons, users } from "@/db/schema";
+import { games, gameMembers, seasons, users, passwordResetTokens } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { generateInviteCode } from "@/lib/utils/invite-code";
-import { sendMemberAddedEmail } from "@/lib/email";
+import { sendMemberAddedEmail, sendInviteEmail } from "@/lib/email";
 import { revalidatePath } from "next/cache";
+import crypto from "crypto";
 
 export async function createGame(name: string) {
   const session = await auth();
@@ -156,9 +157,11 @@ export async function updateGameRules(gameId: number, rules: string) {
 export async function addMemberByEmail(
   gameId: number,
   email: string
-): Promise<{ success: true; name: string | null } | { success: false; error: string }> {
+): Promise<{ success: true; name: string | null; created?: boolean } | { success: false; error: string }> {
   const session = await auth();
   if (!session?.user?.id) return { success: false, error: "Not authenticated" };
+
+  const normalizedEmail = email.toLowerCase().trim();
 
   // Verify caller is a manager
   const [membership] = await db
@@ -176,19 +179,35 @@ export async function addMemberByEmail(
   if (!membership)
     return { success: false, error: "Only league managers can add members" };
 
-  // Find user by email
-  const [targetUser] = await db
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(eq(users.email, email.toLowerCase().trim()))
+  // Get game name for the email
+  const [game] = await db
+    .select({ name: games.name })
+    .from(games)
+    .where(eq(games.id, gameId))
     .limit(1);
 
+  const addedByName = session.user.name || "A league manager";
+  const gameName = game?.name || "a league";
+
+  // Find user by email — or create an account for them
+  let [targetUser] = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(users.email, normalizedEmail))
+    .limit(1);
+
+  let isNewUser = false;
+
   if (!targetUser) {
-    return {
-      success: false,
-      error:
-        "No account found with that email. They need to register first.",
-    };
+    // Create a new account (no password — they'll set one via the invite link)
+    const newUserId = crypto.randomUUID();
+    await db.insert(users).values({
+      id: newUserId,
+      email: normalizedEmail,
+      createdAt: new Date(),
+    });
+    targetUser = { id: newUserId, name: null };
+    isNewUser = true;
   }
 
   // Check if already a member
@@ -206,13 +225,6 @@ export async function addMemberByEmail(
   if (existing)
     return { success: false, error: "This person is already a member" };
 
-  // Get game name for the email
-  const [game] = await db
-    .select({ name: games.name })
-    .from(games)
-    .where(eq(games.id, gameId))
-    .limit(1);
-
   // Add as player
   await db.insert(gameMembers).values({
     id: sql`nextval('game_members_id_seq')`,
@@ -222,16 +234,36 @@ export async function addMemberByEmail(
     joinedAt: new Date(),
   });
 
-  // Send notification email (fire and forget)
-  const addedByName = session.user.name || "A league manager";
-  sendMemberAddedEmail(
-    email.toLowerCase().trim(),
-    game?.name || "a league",
-    addedByName
-  ).catch((err) => console.error("[AddMember] Email error:", err));
+  // Send appropriate email (fire and forget)
+  if (isNewUser) {
+    // Generate a password-setup token (24 hour expiry for new invites)
+    const token = crypto.randomBytes(32).toString("hex");
+    await db.insert(passwordResetTokens).values({
+      id: crypto.randomUUID(),
+      userId: targetUser.id,
+      token,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      createdAt: new Date(),
+    });
+
+    const baseUrl =
+      process.env.NEXTAUTH_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000");
+    const setupUrl = `${baseUrl}/reset-password?token=${token}`;
+
+    sendInviteEmail(normalizedEmail, gameName, addedByName, setupUrl).catch(
+      (err) => console.error("[AddMember] Invite email error:", err)
+    );
+  } else {
+    sendMemberAddedEmail(normalizedEmail, gameName, addedByName).catch(
+      (err) => console.error("[AddMember] Email error:", err)
+    );
+  }
 
   revalidatePath(`/games/${gameId}/members`);
-  return { success: true, name: targetUser.name };
+  return { success: true, name: targetUser.name, created: isNewUser };
 }
 
 export async function updateUserProfile(displayName: string) {

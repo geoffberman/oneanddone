@@ -93,9 +93,6 @@ export async function sendMemberAddedEmail(
               Go to One and Done
             </a>
           </p>
-          <p style="color: #666; font-size: 14px;">
-            If you don't have an account yet, you can register with this email address at the link above.
-          </p>
         </div>
       `,
     });
@@ -108,6 +105,54 @@ export async function sendMemberAddedEmail(
     return true;
   } catch (err) {
     console.error("[Email] Error sending member-added email:", err);
+    return false;
+  }
+}
+
+export async function sendInviteEmail(
+  email: string,
+  gameName: string,
+  addedByName: string,
+  setupUrl: string,
+) {
+  const client = getResendClient();
+  if (!client) {
+    console.log(`[Email] Would send invite email to ${email} for game "${gameName}" — setup: ${setupUrl}`);
+    return false;
+  }
+
+  try {
+    const { error } = await client.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject: `${addedByName} invited you to ${gameName} on One and Done`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+          <h2 style="color: #16a34a;">One and Done</h2>
+          <p>Hey! <strong>${addedByName}</strong> invited you to play in the league <strong>${gameName}</strong>.</p>
+          <p>An account has been created for you. Set your password to get started:</p>
+          <p style="margin: 24px 0;">
+            <a href="${setupUrl}"
+               style="background-color: #16a34a; color: white; padding: 12px 24px;
+                      border-radius: 6px; text-decoration: none; display: inline-block;">
+              Set Up Your Account
+            </a>
+          </p>
+          <p style="color: #666; font-size: 14px;">
+            This link expires in 24 hours. You can also sign in with Google using this email address.
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("[Email] Failed to send invite email:", error);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("[Email] Error sending invite email:", err);
     return false;
   }
 }
