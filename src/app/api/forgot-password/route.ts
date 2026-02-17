@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { db } from "@/db";
 import { users, passwordResetTokens } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { nanoid } from "nanoid";
+import { sendPasswordResetEmail } from "@/lib/email";
 
 async function ensureTable() {
   await db.execute(sql`
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
     if (!email) {
       return NextResponse.json(
         { error: "Email is required." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
       .where(eq(passwordResetTokens.userId, user.id));
 
     // Create a new token (expires in 1 hour)
-    const token = nanoid(48);
+    const token = crypto.randomBytes(32).toString("hex");
     await db.insert(passwordResetTokens).values({
       id: crypto.randomUUID(),
       userId: user.id,
@@ -55,17 +56,27 @@ export async function POST(req: Request) {
       createdAt: new Date(),
     });
 
-    // In production, send this via email. For now, log it.
-    const baseUrl = process.env.NEXTAUTH_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    const baseUrl =
+      process.env.NEXTAUTH_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000");
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-    console.log(`[Password Reset] ${email}: ${resetUrl}`);
+
+    // Send the email via Resend
+    const emailSent = await sendPasswordResetEmail(email, resetUrl);
+
+    if (!emailSent) {
+      // Fallback: log the URL so it's visible in Vercel function logs
+      console.log(`[Password Reset] ${email}: ${resetUrl}`);
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[Forgot Password Error]", err);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
