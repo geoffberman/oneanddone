@@ -153,9 +153,12 @@ export async function updateGameRules(gameId: number, rules: string) {
   revalidatePath(`/games/${gameId}`);
 }
 
-export async function addMemberByEmail(gameId: number, email: string) {
+export async function addMemberByEmail(
+  gameId: number,
+  email: string
+): Promise<{ success: true; name: string | null } | { success: false; error: string }> {
   const session = await auth();
-  if (!session?.user?.id) throw new Error("Not authenticated");
+  if (!session?.user?.id) return { success: false, error: "Not authenticated" };
 
   // Verify caller is a manager
   const [membership] = await db
@@ -170,7 +173,8 @@ export async function addMemberByEmail(gameId: number, email: string) {
     )
     .limit(1);
 
-  if (!membership) throw new Error("Only league managers can add members");
+  if (!membership)
+    return { success: false, error: "Only league managers can add members" };
 
   // Find user by email
   const [targetUser] = await db
@@ -180,9 +184,11 @@ export async function addMemberByEmail(gameId: number, email: string) {
     .limit(1);
 
   if (!targetUser) {
-    throw new Error(
-      "No account found with that email. They need to register first."
-    );
+    return {
+      success: false,
+      error:
+        "No account found with that email. They need to register first.",
+    };
   }
 
   // Check if already a member
@@ -197,7 +203,8 @@ export async function addMemberByEmail(gameId: number, email: string) {
     )
     .limit(1);
 
-  if (existing) throw new Error("This person is already a member");
+  if (existing)
+    return { success: false, error: "This person is already a member" };
 
   // Get game name for the email
   const [game] = await db
@@ -224,7 +231,7 @@ export async function addMemberByEmail(gameId: number, email: string) {
   ).catch((err) => console.error("[AddMember] Email error:", err));
 
   revalidatePath(`/games/${gameId}/members`);
-  return { name: targetUser.name };
+  return { success: true, name: targetUser.name };
 }
 
 export async function updateUserProfile(displayName: string) {

@@ -18,14 +18,16 @@ export function AddMemberForm({ gameId }: { gameId: number }) {
     setLoading(true);
     try {
       const result = await addMemberByEmail(gameId, email.trim());
-      toast.success(
-        `${result.name || email.trim()} has been added and notified by email.`
-      );
-      setEmail("");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to add member"
-      );
+      if (!result.success) {
+        toast.error(result.error);
+      } else {
+        toast.success(
+          `${result.name || email.trim()} has been added and notified by email.`
+        );
+        setEmail("");
+      }
+    } catch {
+      toast.error("Failed to add member. Please try again.");
     } finally {
       setLoading(false);
     }
