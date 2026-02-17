@@ -8,8 +8,8 @@ import {
 } from "./client";
 
 export async function syncSchedule() {
-  // Get current season from SportsData
   const currentSeason = await fetchCurrentSeason();
+  const now = new Date();
 
   // Upsert season
   const [existingSeason] = await db
@@ -19,7 +19,6 @@ export async function syncSchedule() {
     .limit(1);
 
   let season;
-  const now = new Date();
 
   if (existingSeason) {
     const [updated] = await db
@@ -38,24 +37,25 @@ export async function syncSchedule() {
       .returning();
     season = updated;
   } else {
-    const [inserted] = await db
-      .insert(seasons)
-      .values({
-        id: sql`nextval('seasons_id_seq')`,
-        year: currentSeason.Season,
-        name: currentSeason.Description || `${currentSeason.Season} PGA Tour`,
-        startDate: currentSeason.StartDate
-          ? new Date(currentSeason.StartDate)
-          : null,
-        endDate: currentSeason.EndDate
-          ? new Date(currentSeason.EndDate)
-          : null,
-        externalSeasonId: currentSeason.Season,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-    season = inserted;
+    const seasonName =
+      currentSeason.Description || `${currentSeason.Season} PGA Tour`;
+    const startDate = currentSeason.StartDate
+      ? new Date(currentSeason.StartDate)
+      : null;
+    const endDate = currentSeason.EndDate
+      ? new Date(currentSeason.EndDate)
+      : null;
+
+    const rows = await db.execute(sql`
+      INSERT INTO seasons (year, name, start_date, end_date, external_season_id, created_at, updated_at)
+      VALUES (${currentSeason.Season}, ${seasonName}, ${startDate}, ${endDate}, ${currentSeason.Season}, ${now}, ${now})
+      RETURNING id, year, name, start_date, end_date, external_season_id, created_at, updated_at
+    `);
+    season = {
+      id: rows.rows[0].id as number,
+      year: rows.rows[0].year as number,
+      name: rows.rows[0].name as string,
+    };
   }
 
   // Fetch tournaments for the season
@@ -87,25 +87,17 @@ export async function syncSchedule() {
         })
         .where(eq(tournaments.externalTournamentId, t.TournamentID));
     } else {
-      await db.insert(tournaments).values({
-        id: sql`nextval('tournaments_id_seq')`,
-        externalTournamentId: t.TournamentID,
-        seasonId: season.id,
-        name: t.Name,
-        startDate: new Date(t.StartDate),
-        endDate: t.EndDate ? new Date(t.EndDate) : null,
-        location: t.Location,
-        venue: t.Venue,
-        par: t.Par,
-        purse: t.Purse?.toString(),
-        timeZone: t.TimeZone,
-        firstTeeTime: t.StartDateTime ? new Date(t.StartDateTime) : null,
-        isOver: t.IsOver,
-        isInProgress: t.IsInProgress,
-        canceled: t.Canceled,
-        createdAt: now,
-        updatedAt: now,
-      });
+      const startDate = new Date(t.StartDate);
+      const endDate = t.EndDate ? new Date(t.EndDate) : null;
+      const firstTeeTime = t.StartDateTime
+        ? new Date(t.StartDateTime)
+        : null;
+      const purse = t.Purse?.toString() || null;
+
+      await db.execute(sql`
+        INSERT INTO tournaments (external_tournament_id, season_id, name, start_date, end_date, location, venue, par, purse, time_zone, first_tee_time, is_over, is_in_progress, canceled, created_at, updated_at)
+        VALUES (${t.TournamentID}, ${season.id}, ${t.Name}, ${startDate}, ${endDate}, ${t.Location}, ${t.Venue}, ${t.Par}, ${purse}, ${t.TimeZone}, ${firstTeeTime}, ${t.IsOver}, ${t.IsInProgress}, ${t.Canceled}, ${now}, ${now})
+      `);
     }
   }
 
@@ -131,16 +123,10 @@ export async function syncSchedule() {
         })
         .where(eq(golfers.externalPlayerId, p.PlayerID));
     } else {
-      await db.insert(golfers).values({
-        id: sql`nextval('golfers_id_seq')`,
-        externalPlayerId: p.PlayerID,
-        firstName: p.FirstName,
-        lastName: p.LastName,
-        country: p.Country,
-        photoUrl: p.PhotoUrl,
-        createdAt: now,
-        updatedAt: now,
-      });
+      await db.execute(sql`
+        INSERT INTO golfers (external_player_id, first_name, last_name, country, photo_url, created_at, updated_at)
+        VALUES (${p.PlayerID}, ${p.FirstName}, ${p.LastName}, ${p.Country}, ${p.PhotoUrl}, ${now}, ${now})
+      `);
     }
   }
 
