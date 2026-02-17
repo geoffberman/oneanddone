@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -23,9 +24,13 @@ export function Nav({ user }: NavProps) {
             href="/dashboard"
             className="flex items-center gap-2 font-bold text-green-600"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-600 text-xs font-bold text-white">
-              1&amp;D
-            </span>
+            <Image
+              src="/golfer.svg"
+              alt="One and Done"
+              width={32}
+              height={32}
+              className="h-8 w-8"
+            />
             <span className="hidden sm:inline">One and Done</span>
           </Link>
           <nav className="flex items-center gap-4 text-sm">

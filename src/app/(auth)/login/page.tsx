@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { signIn } from "@/auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,9 +14,13 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-green-50 to-white">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-xl bg-green-600 text-xl font-bold text-white">
-            1&amp;D
-          </div>
+          <Image
+            src="/golfer.svg"
+            alt="One and Done"
+            width={56}
+            height={56}
+            className="mx-auto mb-2 h-14 w-14"
+          />
           <CardTitle className="text-2xl">Welcome Back</CardTitle>
           <CardDescription>
             Sign in to manage your One and Done picks

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
@@ -11,9 +12,13 @@ export default async function LandingPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-green-50 to-white">
       <div className="mx-auto max-w-2xl px-4 text-center">
         <div className="mb-8">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-green-600 text-3xl font-bold text-white shadow-lg">
-            1&amp;D
-          </div>
+          <Image
+            src="/golfer.svg"
+            alt="One and Done"
+            width={80}
+            height={80}
+            className="mx-auto mb-4 h-20 w-20"
+          />
           <h1 className="mb-4 text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl">
             One and Done Golf
           </h1>
