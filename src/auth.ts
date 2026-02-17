@@ -16,7 +16,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   }),
   session: { strategy: "jwt" },
   providers: [
-    Google({ allowDangerousEmailAccountLinking: true }),
+    Google,
     Credentials({
       credentials: {
         email: { label: "Email", type: "email" },
@@ -49,6 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: {
     signIn: "/login",
+    error: "/login",
   },
   callbacks: {
     jwt({ token, user }) {

@@ -41,7 +41,9 @@ export default async function LoginPage({
             <div className="rounded-md bg-red-50 p-3 text-center text-sm text-red-600">
               {error === "CredentialsSignin"
                 ? "Invalid email or password."
-                : "Something went wrong. Please try again."}
+                : error === "OAuthAccountNotLinked"
+                  ? "An account with this email already exists. Please sign in with your email and password instead."
+                  : "Something went wrong. Please try again."}
             </div>
           )}
 
