@@ -11,7 +11,7 @@ import {
 import { relations } from "drizzle-orm";
 
 export const seasons = pgTable("seasons", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   year: integer("year").notNull().unique(),
   name: text("name").notNull(),
   startDate: timestamp("start_date"),
@@ -24,7 +24,7 @@ export const seasons = pgTable("seasons", {
 export const tournaments = pgTable(
   "tournaments",
   {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     externalTournamentId: integer("external_tournament_id").notNull().unique(),
     seasonId: integer("season_id")
       .notNull()
@@ -52,7 +52,7 @@ export const tournaments = pgTable(
 );
 
 export const golfers = pgTable("golfers", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   externalPlayerId: integer("external_player_id").notNull().unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
@@ -66,7 +66,7 @@ export const golfers = pgTable("golfers", {
 export const tournamentFields = pgTable(
   "tournament_fields",
   {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     tournamentId: integer("tournament_id")
       .notNull()
       .references(() => tournaments.id),
@@ -93,7 +93,7 @@ export const tournamentFields = pgTable(
 export const tournamentResults = pgTable(
   "tournament_results",
   {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     tournamentId: integer("tournament_id")
       .notNull()
       .references(() => tournaments.id),

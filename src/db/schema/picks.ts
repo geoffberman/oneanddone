@@ -16,7 +16,7 @@ import { games } from "./game";
 export const picks = pgTable(
   "picks",
   {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     gameId: integer("game_id")
       .notNull()
       .references(() => games.id),
@@ -50,7 +50,7 @@ export const picks = pgTable(
 export const usedGolfers = pgTable(
   "used_golfers",
   {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     gameId: integer("game_id")
       .notNull()
       .references(() => games.id),

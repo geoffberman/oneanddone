@@ -15,7 +15,7 @@ import { seasons, tournaments } from "./golf";
 export const memberRoleEnum = pgEnum("member_role", ["manager", "player"]);
 
 export const games = pgTable("games", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   name: text("name").notNull(),
   seasonId: integer("season_id")
     .notNull()
@@ -32,7 +32,7 @@ export const games = pgTable("games", {
 export const gameMembers = pgTable(
   "game_members",
   {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     gameId: integer("game_id")
       .notNull()
       .references(() => games.id, { onDelete: "cascade" }),
@@ -50,7 +50,7 @@ export const gameMembers = pgTable(
 );
 
 export const subGames = pgTable("sub_games", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   gameId: integer("game_id")
     .notNull()
     .references(() => games.id, { onDelete: "cascade" }),
@@ -62,7 +62,7 @@ export const subGames = pgTable("sub_games", {
 export const subGameTournaments = pgTable(
   "sub_game_tournaments",
   {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     subGameId: integer("sub_game_id")
       .notNull()
       .references(() => subGames.id, { onDelete: "cascade" }),
