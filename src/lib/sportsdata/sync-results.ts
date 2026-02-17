@@ -54,9 +54,33 @@ export async function syncResults() {
 
         if (!golfer) continue;
 
-        await db
-          .insert(tournamentResults)
-          .values({
+        const [existing] = await db
+          .select()
+          .from(tournamentResults)
+          .where(
+            and(
+              eq(tournamentResults.tournamentId, tournament.id),
+              eq(tournamentResults.golferId, golfer.id)
+            )
+          )
+          .limit(1);
+
+        if (existing) {
+          await db
+            .update(tournamentResults)
+            .set({
+              position: player.Rank || null,
+              earnings: player.Earnings?.toString() || "0",
+              totalScore: player.TotalStrokes || null,
+              totalScoreToPar: player.TotalScore || null,
+              madeCut: player.MadeCut === 1,
+              isWithdrawn: player.IsWithdrawn,
+              rounds: player.Rounds?.length || 0,
+              updatedAt: new Date(),
+            })
+            .where(eq(tournamentResults.id, existing.id));
+        } else {
+          await db.insert(tournamentResults).values({
             tournamentId: tournament.id,
             golferId: golfer.id,
             position: player.Rank || null,
@@ -66,23 +90,8 @@ export async function syncResults() {
             madeCut: player.MadeCut === 1,
             isWithdrawn: player.IsWithdrawn,
             rounds: player.Rounds?.length || 0,
-          })
-          .onConflictDoUpdate({
-            target: [
-              tournamentResults.tournamentId,
-              tournamentResults.golferId,
-            ],
-            set: {
-              position: player.Rank || null,
-              earnings: player.Earnings?.toString() || "0",
-              totalScore: player.TotalStrokes || null,
-              totalScoreToPar: player.TotalScore || null,
-              madeCut: player.MadeCut === 1,
-              isWithdrawn: player.IsWithdrawn,
-              rounds: player.Rounds?.length || 0,
-              updatedAt: new Date(),
-            },
           });
+        }
 
         resultsCount++;
       }

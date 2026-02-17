@@ -85,16 +85,27 @@ export async function resolvePicks() {
         })
         .where(eq(picks.id, pick.id));
 
-      // Record the used golfer (the active one)
-      await db
-        .insert(usedGolfers)
-        .values({
+      // Record the used golfer (the active one) — skip if already exists
+      const [existingUsed] = await db
+        .select()
+        .from(usedGolfers)
+        .where(
+          and(
+            eq(usedGolfers.gameId, pick.gameId),
+            eq(usedGolfers.userId, pick.userId),
+            eq(usedGolfers.golferId, activeGolferId)
+          )
+        )
+        .limit(1);
+
+      if (!existingUsed) {
+        await db.insert(usedGolfers).values({
           gameId: pick.gameId,
           userId: pick.userId,
           golferId: activeGolferId,
           tournamentId: tournament.id,
-        })
-        .onConflictDoNothing();
+        });
+      }
 
       resolvedCount++;
     }

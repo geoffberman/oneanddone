@@ -64,7 +64,7 @@ export async function syncField() {
       let fieldCount = 0;
       for (const player of leaderboard.Players || []) {
         // Find the golfer in our DB
-        const [golfer] = await db
+        let [golfer] = await db
           .select()
           .from(golfers)
           .where(eq(golfers.externalPlayerId, player.PlayerID))
@@ -80,31 +80,16 @@ export async function syncField() {
               lastName: player.LastName,
               country: player.Country,
             })
-            .onConflictDoUpdate({
-              target: golfers.externalPlayerId,
-              set: {
-                firstName: player.FirstName,
-                lastName: player.LastName,
-                country: player.Country,
-                updatedAt: new Date(),
-              },
-            })
             .returning();
-
-          await upsertFieldEntry(
-            tournament.id,
-            newGolfer.id,
-            player.IsWithdrawn,
-            tournament.isInProgress
-          );
-        } else {
-          await upsertFieldEntry(
-            tournament.id,
-            golfer.id,
-            player.IsWithdrawn,
-            tournament.isInProgress
-          );
+          golfer = newGolfer;
         }
+
+        await upsertFieldEntry(
+          tournament.id,
+          golfer.id,
+          player.IsWithdrawn,
+          tournament.isInProgress
+        );
         fieldCount++;
       }
 
@@ -130,21 +115,32 @@ async function upsertFieldEntry(
   isWithdrawn: boolean,
   tournamentInProgress: boolean
 ) {
-  await db
-    .insert(tournamentFields)
-    .values({
-      tournamentId,
-      golferId,
-      isWithdrawn,
-      // Only mark as withdrawnBeforeRound1 if tournament hasn't started yet
-      withdrawnBeforeRound1: isWithdrawn && !tournamentInProgress,
-    })
-    .onConflictDoUpdate({
-      target: [tournamentFields.tournamentId, tournamentFields.golferId],
-      set: {
+  const [existing] = await db
+    .select()
+    .from(tournamentFields)
+    .where(
+      and(
+        eq(tournamentFields.tournamentId, tournamentId),
+        eq(tournamentFields.golferId, golferId)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(tournamentFields)
+      .set({
         isWithdrawn,
         withdrawnBeforeRound1: isWithdrawn && !tournamentInProgress,
         updatedAt: new Date(),
-      },
+      })
+      .where(eq(tournamentFields.id, existing.id));
+  } else {
+    await db.insert(tournamentFields).values({
+      tournamentId,
+      golferId,
+      isWithdrawn,
+      withdrawnBeforeRound1: isWithdrawn && !tournamentInProgress,
     });
+  }
 }

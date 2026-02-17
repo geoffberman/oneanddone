@@ -12,20 +12,17 @@ export async function syncSchedule() {
   const currentSeason = await fetchCurrentSeason();
 
   // Upsert season
-  const [season] = await db
-    .insert(seasons)
-    .values({
-      year: currentSeason.Season,
-      name: currentSeason.Description || `${currentSeason.Season} PGA Tour`,
-      startDate: currentSeason.StartDate
-        ? new Date(currentSeason.StartDate)
-        : null,
-      endDate: currentSeason.EndDate ? new Date(currentSeason.EndDate) : null,
-      externalSeasonId: currentSeason.Season,
-    })
-    .onConflictDoUpdate({
-      target: seasons.year,
-      set: {
+  const [existingSeason] = await db
+    .select()
+    .from(seasons)
+    .where(eq(seasons.year, currentSeason.Season))
+    .limit(1);
+
+  let season;
+  if (existingSeason) {
+    const [updated] = await db
+      .update(seasons)
+      .set({
         name: currentSeason.Description || `${currentSeason.Season} PGA Tour`,
         startDate: currentSeason.StartDate
           ? new Date(currentSeason.StartDate)
@@ -34,37 +31,42 @@ export async function syncSchedule() {
           ? new Date(currentSeason.EndDate)
           : null,
         updatedAt: new Date(),
-      },
-    })
-    .returning();
+      })
+      .where(eq(seasons.year, currentSeason.Season))
+      .returning();
+    season = updated;
+  } else {
+    const [inserted] = await db
+      .insert(seasons)
+      .values({
+        year: currentSeason.Season,
+        name: currentSeason.Description || `${currentSeason.Season} PGA Tour`,
+        startDate: currentSeason.StartDate
+          ? new Date(currentSeason.StartDate)
+          : null,
+        endDate: currentSeason.EndDate
+          ? new Date(currentSeason.EndDate)
+          : null,
+        externalSeasonId: currentSeason.Season,
+      })
+      .returning();
+    season = inserted;
+  }
 
   // Fetch tournaments for the season
   const apiTournaments = await fetchTournamentsBySeason(currentSeason.Season);
 
   for (const t of apiTournaments) {
-    await db
-      .insert(tournaments)
-      .values({
-        externalTournamentId: t.TournamentID,
-        seasonId: season.id,
-        name: t.Name,
-        startDate: new Date(t.StartDate),
-        endDate: t.EndDate ? new Date(t.EndDate) : null,
-        location: t.Location,
-        venue: t.Venue,
-        par: t.Par,
-        purse: t.Purse?.toString(),
-        timeZone: t.TimeZone,
-        firstTeeTime: t.StartDateTime
-          ? new Date(t.StartDateTime)
-          : null,
-        isOver: t.IsOver,
-        isInProgress: t.IsInProgress,
-        canceled: t.Canceled,
-      })
-      .onConflictDoUpdate({
-        target: tournaments.externalTournamentId,
-        set: {
+    const [existing] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.externalTournamentId, t.TournamentID))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(tournaments)
+        .set({
           name: t.Name,
           startDate: new Date(t.StartDate),
           endDate: t.EndDate ? new Date(t.EndDate) : null,
@@ -77,33 +79,58 @@ export async function syncSchedule() {
           isInProgress: t.IsInProgress,
           canceled: t.Canceled,
           updatedAt: new Date(),
-        },
+        })
+        .where(eq(tournaments.externalTournamentId, t.TournamentID));
+    } else {
+      await db.insert(tournaments).values({
+        externalTournamentId: t.TournamentID,
+        seasonId: season.id,
+        name: t.Name,
+        startDate: new Date(t.StartDate),
+        endDate: t.EndDate ? new Date(t.EndDate) : null,
+        location: t.Location,
+        venue: t.Venue,
+        par: t.Par,
+        purse: t.Purse?.toString(),
+        timeZone: t.TimeZone,
+        firstTeeTime: t.StartDateTime ? new Date(t.StartDateTime) : null,
+        isOver: t.IsOver,
+        isInProgress: t.IsInProgress,
+        canceled: t.Canceled,
       });
+    }
   }
 
   // Sync players
   const apiPlayers = await fetchPlayers();
 
   for (const p of apiPlayers) {
-    await db
-      .insert(golfers)
-      .values({
-        externalPlayerId: p.PlayerID,
-        firstName: p.FirstName,
-        lastName: p.LastName,
-        country: p.Country,
-        photoUrl: p.PhotoUrl,
-      })
-      .onConflictDoUpdate({
-        target: golfers.externalPlayerId,
-        set: {
+    const [existing] = await db
+      .select()
+      .from(golfers)
+      .where(eq(golfers.externalPlayerId, p.PlayerID))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(golfers)
+        .set({
           firstName: p.FirstName,
           lastName: p.LastName,
           country: p.Country,
           photoUrl: p.PhotoUrl,
           updatedAt: new Date(),
-        },
+        })
+        .where(eq(golfers.externalPlayerId, p.PlayerID));
+    } else {
+      await db.insert(golfers).values({
+        externalPlayerId: p.PlayerID,
+        firstName: p.FirstName,
+        lastName: p.LastName,
+        country: p.Country,
+        photoUrl: p.PhotoUrl,
       });
+    }
   }
 
   return {

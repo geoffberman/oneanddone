@@ -44,24 +44,43 @@ export async function submitPick(
   }
 
   // Upsert the pick
-  const [pick] = await db
-    .insert(picks)
-    .values({
-      gameId,
-      userId: session.user.id,
-      tournamentId,
-      primaryGolferId,
-      alternateGolferId,
-    })
-    .onConflictDoUpdate({
-      target: [picks.gameId, picks.userId, picks.tournamentId],
-      set: {
+  const [existingPick] = await db
+    .select()
+    .from(picks)
+    .where(
+      and(
+        eq(picks.gameId, gameId),
+        eq(picks.userId, session.user.id),
+        eq(picks.tournamentId, tournamentId)
+      )
+    )
+    .limit(1);
+
+  let pick;
+  if (existingPick) {
+    const [updated] = await db
+      .update(picks)
+      .set({
         primaryGolferId,
         alternateGolferId,
         updatedAt: new Date(),
-      },
-    })
-    .returning();
+      })
+      .where(eq(picks.id, existingPick.id))
+      .returning();
+    pick = updated;
+  } else {
+    const [inserted] = await db
+      .insert(picks)
+      .values({
+        gameId,
+        userId: session.user.id,
+        tournamentId,
+        primaryGolferId,
+        alternateGolferId,
+      })
+      .returning();
+    pick = inserted;
+  }
 
   revalidatePath(`/games/${gameId}`);
   return pick;
