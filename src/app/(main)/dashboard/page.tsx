@@ -11,9 +11,11 @@ import {
 import { Trophy, Calendar, Clock } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { AccessCodeForm } from "./access-code-form";
+import { ensureSchema } from "@/lib/ensure-schema";
 
 export default async function DashboardPage() {
   const session = await auth();
+  await ensureSchema();
   const games = await getUserGames();
   const currentTournament = await getCurrentTournament();
 

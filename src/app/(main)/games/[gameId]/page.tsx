@@ -38,19 +38,13 @@ export default async function GameHomePage({
   if (!session?.user?.id) notFound();
   const userId = session!.user!.id;
 
-  const [game, role, currentTournament] = await Promise.all([
-    getGameById(gameId),
-    getUserRole(gameId, userId),
-    getCurrentTournament(),
-  ]);
-
-  // announcements table may not exist yet if migration hasn't been applied
-  let recentAnnouncements: Awaited<ReturnType<typeof getAnnouncements>> = [];
-  try {
-    recentAnnouncements = await getAnnouncements(gameId, 3);
-  } catch {
-    // Table doesn't exist yet
-  }
+  const [game, role, currentTournament, recentAnnouncements] =
+    await Promise.all([
+      getGameById(gameId),
+      getUserRole(gameId, userId),
+      getCurrentTournament(),
+      getAnnouncements(gameId, 3).catch(() => []),
+    ]);
 
   if (!game || !role) notFound();
 

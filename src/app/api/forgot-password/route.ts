@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, passwordResetTokens } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+
+async function ensureTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
+      "id" text PRIMARY KEY NOT NULL,
+      "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "token" text NOT NULL UNIQUE,
+      "expires_at" timestamp NOT NULL,
+      "created_at" timestamp DEFAULT now() NOT NULL
+    )
+  `);
+}
 
 export async function POST(req: Request) {
   try {
@@ -26,6 +38,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
+    await ensureTable();
+
     // Delete any existing tokens for this user
     await db
       .delete(passwordResetTokens)
@@ -42,11 +56,13 @@ export async function POST(req: Request) {
     });
 
     // In production, send this via email. For now, log it.
-    const resetUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/reset-password?token=${token}`;
+    const baseUrl = process.env.NEXTAUTH_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
     console.log(`[Password Reset] ${email}: ${resetUrl}`);
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (err) {
+    console.error("[Forgot Password Error]", err);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

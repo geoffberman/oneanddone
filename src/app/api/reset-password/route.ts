@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, passwordResetTokens } from "@/db/schema";
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+
+async function ensureTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
+      "id" text PRIMARY KEY NOT NULL,
+      "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "token" text NOT NULL UNIQUE,
+      "expires_at" timestamp NOT NULL,
+      "created_at" timestamp DEFAULT now() NOT NULL
+    )
+  `);
+}
 
 export async function POST(req: Request) {
   try {
@@ -22,9 +34,16 @@ export async function POST(req: Request) {
       );
     }
 
+    await ensureTable();
+
     // Find valid, non-expired token
     const [resetToken] = await db
-      .select()
+      .select({
+        id: passwordResetTokens.id,
+        userId: passwordResetTokens.userId,
+        token: passwordResetTokens.token,
+        expiresAt: passwordResetTokens.expiresAt,
+      })
       .from(passwordResetTokens)
       .where(
         and(
@@ -54,7 +73,8 @@ export async function POST(req: Request) {
       .where(eq(passwordResetTokens.userId, resetToken.userId));
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (err) {
+    console.error("[Reset Password Error]", err);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }

@@ -13,28 +13,14 @@ export async function getGameById(gameId: number) {
       inviteCode: games.inviteCode,
       isActive: games.isActive,
       createdAt: games.createdAt,
+      rules: games.rules,
     })
     .from(games)
     .innerJoin(seasons, eq(games.seasonId, seasons.id))
     .where(eq(games.id, gameId))
     .limit(1);
 
-  if (!game) return null;
-
-  // rules column may not exist yet if migration hasn't been applied
-  let rules: string | null = null;
-  try {
-    const [row] = await db
-      .select({ rules: games.rules })
-      .from(games)
-      .where(eq(games.id, gameId))
-      .limit(1);
-    rules = row?.rules ?? null;
-  } catch {
-    // Column doesn't exist yet
-  }
-
-  return { ...game, rules };
+  return game ?? null;
 }
 
 export async function getGameMembers(gameId: number) {
