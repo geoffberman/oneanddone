@@ -7,10 +7,12 @@ export async function ensureSchema() {
   if (schemaEnsured) return;
 
   try {
-    // Add rules column to games if missing
-    await db.execute(sql`
-      ALTER TABLE "games" ADD COLUMN IF NOT EXISTS "rules" text
-    `);
+    // Add missing columns
+    await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password" text`);
+    await db.execute(sql`ALTER TABLE "games" ADD COLUMN IF NOT EXISTS "rules" text`);
+    await db.execute(sql`ALTER TABLE "picks" ADD COLUMN IF NOT EXISTS "active_golfer_id" integer`);
+    await db.execute(sql`ALTER TABLE "picks" ADD COLUMN IF NOT EXISTS "alternate_activated" boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE "picks" ADD COLUMN IF NOT EXISTS "earnings" numeric(12,2) DEFAULT '0'`);
 
     // Create announcements table if missing
     await db.execute(sql`
