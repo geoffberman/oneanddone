@@ -126,6 +126,113 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: "Password updated" });
     }
 
+    if (action === "test-members-page") {
+      // Simulate the exact queries that /games/[gameId]/members runs
+      const testResults: Record<string, unknown> = {};
+
+      try {
+        // Find first game
+        const gamesResult = await db.execute(sql`SELECT id, name, season_id, invite_code FROM games LIMIT 1`);
+        if (!gamesResult.rows.length) {
+          return NextResponse.json({ error: "No games found in database" });
+        }
+        const testGame = gamesResult.rows[0] as Record<string, unknown>;
+        testResults.testGame = testGame;
+        const gameId = testGame.id as number;
+
+        // Find first member of this game
+        const membersRaw = await db.execute(
+          sql`SELECT gm.id, gm.game_id, gm.user_id, gm.role, gm.joined_at FROM game_members gm WHERE gm.game_id = ${gameId}`
+        );
+        testResults.rawMembers = membersRaw.rows;
+
+        const firstMember = membersRaw.rows[0] as Record<string, unknown> | undefined;
+        const testUserId = firstMember?.user_id as string | undefined;
+
+        // Test 1: getGameById query (with seasons join)
+        try {
+          const { getGameById } = await import("@/lib/queries/games");
+          const game = await getGameById(gameId);
+          testResults.getGameById = game ? "OK" : "returned null";
+          testResults.getGameByIdData = game;
+        } catch (e) {
+          testResults.getGameByIdError = String(e);
+          testResults.getGameByIdStack = (e as Error).stack?.substring(0, 500);
+        }
+
+        // Test 2: getUserRole query
+        try {
+          const { getUserRole } = await import("@/lib/queries/games");
+          const role = testUserId ? await getUserRole(gameId, testUserId) : "no user to test";
+          testResults.getUserRole = role ? "OK: " + role : "returned null";
+        } catch (e) {
+          testResults.getUserRoleError = String(e);
+          testResults.getUserRoleStack = (e as Error).stack?.substring(0, 500);
+        }
+
+        // Test 3: getGameMembers query (the most suspicious one)
+        try {
+          const { getGameMembers } = await import("@/lib/queries/games");
+          const members = await getGameMembers(gameId);
+          testResults.getGameMembers = `OK: ${members.length} members`;
+          testResults.getGameMembersData = members;
+        } catch (e) {
+          testResults.getGameMembersError = String(e);
+          testResults.getGameMembersStack = (e as Error).stack?.substring(0, 500);
+        }
+
+        // Test 4: Try the raw join query directly
+        try {
+          const rawJoin = await db.execute(sql`
+            SELECT gm.id, gm.user_id, u.name as user_name, u.image as user_image,
+                   gm.role, gm.joined_at
+            FROM game_members gm
+            INNER JOIN users u ON gm.user_id = u.id
+            WHERE gm.game_id = ${gameId}
+          `);
+          testResults.rawJoinQuery = `OK: ${rawJoin.rows.length} rows`;
+          testResults.rawJoinData = rawJoin.rows;
+        } catch (e) {
+          testResults.rawJoinError = String(e);
+        }
+
+        // Test 5: Check seasons table has data
+        try {
+          const seasonsResult = await db.execute(sql`SELECT id, year FROM seasons LIMIT 5`);
+          testResults.seasons = seasonsResult.rows;
+        } catch (e) {
+          testResults.seasonsError = String(e);
+        }
+
+        // Test 6: Check if game's season exists
+        try {
+          const seasonCheck = await db.execute(
+            sql`SELECT s.id, s.year FROM seasons s
+                INNER JOIN games g ON g.season_id = s.id
+                WHERE g.id = ${gameId}`
+          );
+          testResults.gameSeasonJoin = seasonCheck.rows.length > 0 ? "OK" : "NO MATCHING SEASON";
+          testResults.gameSeasonData = seasonCheck.rows;
+        } catch (e) {
+          testResults.gameSeasonError = String(e);
+        }
+
+        // Test 7: list all users
+        try {
+          const usersResult = await db.execute(sql`SELECT id, name, email FROM users LIMIT 10`);
+          testResults.users = usersResult.rows;
+        } catch (e) {
+          testResults.usersError = String(e);
+        }
+
+      } catch (e) {
+        testResults.topLevelError = String(e);
+        testResults.topLevelStack = (e as Error).stack?.substring(0, 500);
+      }
+
+      return NextResponse.json(testResults);
+    }
+
     if (action === "migrate") {
       const results: string[] = [];
 
