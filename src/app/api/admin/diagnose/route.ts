@@ -48,12 +48,22 @@ export async function POST(req: Request) {
             id: users.id,
             name: users.name,
             email: users.email,
-            hasPassword: sql<boolean>`${users.password} IS NOT NULL`,
+            password: users.password,
           })
           .from(users)
           .where(eq(users.email, email))
           .limit(1);
-        results.user = user || "NOT FOUND";
+        if (user) {
+          results.user = {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            hasPassword: !!user.password,
+            passwordPrefix: user.password ? user.password.substring(0, 10) + "..." : null,
+          };
+        } else {
+          results.user = "NOT FOUND";
+        }
       }
 
       // 5. Check environment
