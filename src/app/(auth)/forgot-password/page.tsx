@@ -32,8 +32,12 @@ export default function ForgotPasswordPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Something went wrong.");
+        try {
+          const data = await res.json();
+          setError(data.error || "Something went wrong.");
+        } catch {
+          setError(`Server error (${res.status}). Please try again later.`);
+        }
         setLoading(false);
         return;
       }

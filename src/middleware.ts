@@ -11,10 +11,11 @@ export default auth((req) => {
   const isOnApiRegister = req.nextUrl.pathname.startsWith("/api/register");
   const isOnApiPassword = req.nextUrl.pathname.startsWith("/api/forgot-password") || req.nextUrl.pathname.startsWith("/api/reset-password");
   const isOnCronApi = req.nextUrl.pathname.startsWith("/api/cron");
+  const isOnAdminApi = req.nextUrl.pathname.startsWith("/api/admin");
   const isOnLandingPage = req.nextUrl.pathname === "/";
 
   // Allow public routes
-  if (isOnApiAuth || isOnApiRegister || isOnApiPassword || isOnCronApi || isOnLandingPage) {
+  if (isOnApiAuth || isOnApiRegister || isOnApiPassword || isOnCronApi || isOnAdminApi || isOnLandingPage) {
     return;
   }
 

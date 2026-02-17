@@ -1,6 +1,17 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resend: Resend | null = null;
+
+function getResendClient(): Resend | null {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("[Email] RESEND_API_KEY not set — emails will be skipped");
+    return null;
+  }
+  if (!resend) {
+    resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resend;
+}
 
 const FROM_EMAIL = process.env.EMAIL_FROM || "oneanddone@resend.dev";
 
@@ -8,8 +19,11 @@ export async function sendPasswordResetEmail(
   email: string,
   resetUrl: string,
 ) {
+  const client = getResendClient();
+  if (!client) return false;
+
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await client.emails.send({
       from: FROM_EMAIL,
       to: email,
       subject: "Reset your One and Done password",
