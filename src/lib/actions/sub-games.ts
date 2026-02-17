@@ -15,7 +15,7 @@ async function requireManager(gameId: number) {
   if (!session?.user?.id) throw new Error("Not authenticated");
 
   const [membership] = await db
-    .select()
+    .select({ id: gameMembers.id })
     .from(gameMembers)
     .where(
       and(

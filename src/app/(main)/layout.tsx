@@ -1,7 +1,6 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { Nav } from "@/components/layout/nav";
-import { ensureSchema } from "@/lib/ensure-schema";
 
 export default async function MainLayout({
   children,
@@ -10,8 +9,6 @@ export default async function MainLayout({
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-
-  await ensureSchema();
 
   return (
     <div className="min-h-screen bg-neutral-50">

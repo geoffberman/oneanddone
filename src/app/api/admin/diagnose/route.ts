@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     if (action === "diagnose") {
       const results: Record<string, unknown> = {};
 
-      // 1. Check tables — raw SQL with individual error handling
+      // 1. Check tables
       try {
         const tables = await db.execute(sql`
           SELECT table_name FROM information_schema.tables
@@ -28,31 +28,29 @@ export async function POST(req: Request) {
         results.tablesError = String(e);
       }
 
-      // 2. Check users table columns — raw SQL
-      try {
-        const cols = await db.execute(sql`
-          SELECT column_name, data_type FROM information_schema.columns
-          WHERE table_name = 'users' ORDER BY ordinal_position
-        `);
-        results.userColumns = cols.rows.map(
-          (c: Record<string, unknown>) => `${c.column_name} (${c.data_type})`,
-        );
-      } catch (e) {
-        results.userColumnsError = String(e);
+      // 2. Check ALL table columns
+      const tablesToCheck = ["users", "games", "game_members", "picks", "seasons", "tournaments", "golfers"];
+      for (const table of tablesToCheck) {
+        try {
+          const cols = await db.execute(sql`
+            SELECT column_name, data_type, is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_name = ${table} ORDER BY ordinal_position
+          `);
+          results[`${table}_columns`] = cols.rows.map(
+            (c: Record<string, unknown>) => ({
+              col: c.column_name,
+              type: c.data_type,
+              nullable: c.is_nullable,
+              default: c.column_default ? String(c.column_default).substring(0, 50) : null,
+            }),
+          );
+        } catch (e) {
+          results[`${table}_columns_error`] = String(e);
+        }
       }
 
-      // 3. Check games table columns — raw SQL
-      try {
-        const gameCols = await db.execute(sql`
-          SELECT column_name FROM information_schema.columns
-          WHERE table_name = 'games' ORDER BY ordinal_position
-        `);
-        results.gameColumns = gameCols.rows.map((c: Record<string, unknown>) => c.column_name);
-      } catch (e) {
-        results.gameColumnsError = String(e);
-      }
-
-      // 4. Check user exists — raw SQL only (no Drizzle ORM)
+      // 3. Check user exists
       if (email) {
         try {
           const userResult = await db.execute(
@@ -61,17 +59,32 @@ export async function POST(req: Request) {
           results.user = userResult.rows[0] || "NOT FOUND";
         } catch (e) {
           results.userQueryError = String(e);
-          // Fallback: try counting users
-          try {
-            const cnt = await db.execute(sql`SELECT count(*) as cnt FROM users`);
-            results.userCount = cnt.rows[0];
-          } catch (e2) {
-            results.userCountError = String(e2);
-          }
         }
       }
 
-      // 5. Check environment
+      // 4. Check sequences
+      try {
+        const seqs = await db.execute(sql`
+          SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'
+        `);
+        results.sequences = seqs.rows.map((s: Record<string, unknown>) => s.sequencename);
+      } catch (e) {
+        results.sequencesError = String(e);
+      }
+
+      // 5. Check enum types
+      try {
+        const enums = await db.execute(sql`
+          SELECT t.typname, string_agg(e.enumlabel, ', ') as values
+          FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid
+          GROUP BY t.typname
+        `);
+        results.enums = enums.rows;
+      } catch (e) {
+        results.enumsError = String(e);
+      }
+
+      // 6. Environment
       results.env = {
         hasDbUrl: !!process.env.DATABASE_URL,
         dbUrlPrefix: process.env.DATABASE_URL
@@ -79,8 +92,6 @@ export async function POST(req: Request) {
           : "NOT SET",
         hasAuthSecret: !!process.env.AUTH_SECRET,
         hasResendKey: !!process.env.RESEND_API_KEY,
-        nextauthUrl: process.env.NEXTAUTH_URL || "NOT SET",
-        vercelUrl: process.env.VERCEL_URL || "NOT SET",
         nodeEnv: process.env.NODE_ENV,
       };
 
@@ -95,7 +106,6 @@ export async function POST(req: Request) {
         );
       }
 
-      // Use raw SQL to find user to avoid any ORM issues
       const userResult = await db.execute(
         sql`SELECT id FROM users WHERE email = ${email} LIMIT 1`
       );
@@ -119,7 +129,6 @@ export async function POST(req: Request) {
     if (action === "migrate") {
       const results: string[] = [];
 
-      // Helper: add column if missing
       async function addCol(table: string, column: string, colType: string) {
         try {
           const check = await db.execute(
@@ -136,7 +145,6 @@ export async function POST(req: Request) {
         }
       }
 
-      // Helper: create table if missing
       async function createTable(table: string, ddl: string) {
         try {
           const check = await db.execute(
@@ -155,6 +163,8 @@ export async function POST(req: Request) {
 
       // -- Missing columns --
       await addCol("users", "password", "text");
+      await addCol("users", "display_name", "text");
+      await addCol("users", "created_at", "timestamp DEFAULT now() NOT NULL");
       await addCol("games", "rules", "text");
       await addCol("picks", "active_golfer_id", 'integer REFERENCES "golfers"("id")');
       await addCol("picks", "alternate_activated", "boolean NOT NULL DEFAULT false");
@@ -183,7 +193,6 @@ export async function POST(req: Request) {
         )`
       );
 
-      // Indexes (safe to run with IF NOT EXISTS)
       try {
         await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "idx_announcement_game" ON "announcements" ("game_id")`));
         results.push("announcement index OK");

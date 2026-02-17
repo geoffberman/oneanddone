@@ -14,7 +14,7 @@ export async function createGame(name: string) {
 
   // Get the latest season
   const [season] = await db
-    .select()
+    .select({ id: seasons.id, year: seasons.year })
     .from(seasons)
     .orderBy(desc(seasons.year))
     .limit(1);
@@ -132,7 +132,7 @@ export async function updateGameRules(gameId: number, rules: string) {
   if (!session?.user?.id) throw new Error("Not authenticated");
 
   const [membership] = await db
-    .select()
+    .select({ id: gameMembers.id })
     .from(gameMembers)
     .where(
       and(
@@ -208,6 +208,7 @@ export async function addMemberByEmail(gameId: number, email: string) {
 
   // Add as player
   await db.insert(gameMembers).values({
+    id: sql`nextval('game_members_id_seq')`,
     gameId,
     userId: targetUser.id,
     role: "player",

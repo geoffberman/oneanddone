@@ -12,7 +12,7 @@ export async function sendAnnouncement(gameId: number, message: string) {
 
   // Verify user is a manager of this game
   const [membership] = await db
-    .select()
+    .select({ id: gameMembers.id })
     .from(gameMembers)
     .where(
       and(
