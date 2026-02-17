@@ -3,20 +3,29 @@ import { auth } from "@/auth";
 import { notFound } from "next/navigation";
 import { getGameById, getUserRole } from "@/lib/queries/games";
 import { getCurrentTournament } from "@/lib/queries/tournaments";
-import { getSeasonLeaderboard } from "@/lib/queries/leaderboard";
 import { getUserPick } from "@/lib/actions/picks";
-import { getSubGames } from "@/lib/actions/sub-games";
+import { getAnnouncements } from "@/lib/actions/announcements";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatDate } from "@/lib/utils";
-import { Settings, Trophy, Calendar, Users } from "lucide-react";
+import { formatDate } from "@/lib/utils";
+import {
+  Trophy,
+  Calendar,
+  Clock,
+  ScrollText,
+  UserCog,
+  Settings,
+  Megaphone,
+  Users,
+  ChevronRight,
+} from "lucide-react";
+import { AnnouncementForm } from "./announcement-form";
 
 export default async function GameHomePage({
   params,
@@ -29,13 +38,12 @@ export default async function GameHomePage({
   if (!session?.user?.id) notFound();
   const userId = session!.user!.id;
 
-  const [game, role, leaderboard, currentTournament, subGamesList] =
+  const [game, role, currentTournament, recentAnnouncements] =
     await Promise.all([
       getGameById(gameId),
       getUserRole(gameId, userId),
-      getSeasonLeaderboard(gameId),
       getCurrentTournament(),
-      getSubGames(gameId),
+      getAnnouncements(gameId, 3),
     ]);
 
   if (!game || !role) notFound();
@@ -45,9 +53,13 @@ export default async function GameHomePage({
     : null;
 
   const isManager = role === "manager";
+  const pickDeadline = currentTournament
+    ? currentTournament.firstTeeTime || currentTournament.startDate
+    : null;
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">{game.name}</h1>
@@ -55,56 +67,65 @@ export default async function GameHomePage({
             {game.seasonYear} Season
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/games/${gameId}/members`}>
-              <Users className="mr-1.5 h-4 w-4" />
-              Members
-            </Link>
-          </Button>
-          {isManager && (
+        {isManager && (
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/games/${gameId}/members`}>
+                <Users className="mr-1.5 h-4 w-4" />
+                Members
+              </Link>
+            </Button>
             <Button asChild variant="outline" size="sm">
               <Link href={`/games/${gameId}/settings`}>
                 <Settings className="mr-1.5 h-4 w-4" />
-                Settings
+                Manage
               </Link>
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Current Tournament & Pick */}
-      {currentTournament && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-green-600" />
-                <CardDescription>
-                  {currentTournament.isInProgress
-                    ? "In Progress"
-                    : "Upcoming"}
-                </CardDescription>
-              </div>
-              {currentTournament.firstTeeTime && (
-                <Badge variant="outline">
-                  Locks: {formatDate(currentTournament.firstTeeTime)}
-                </Badge>
-              )}
+      {/* This Week's Pick */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-green-600" />
+              <CardTitle className="text-base">
+                {currentTournament
+                  ? currentTournament.name
+                  : "No upcoming tournament"}
+              </CardTitle>
             </div>
-            <CardTitle>{currentTournament.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
+            {currentTournament && (
+              <Badge
+                variant={
+                  currentTournament.isInProgress ? "default" : "outline"
+                }
+              >
+                {currentTournament.isInProgress ? "In Progress" : "Upcoming"}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        {currentTournament && (
+          <CardContent className="space-y-3">
+            {pickDeadline && (
+              <div className="flex items-center gap-1.5 text-sm text-neutral-500">
+                <Clock className="h-3.5 w-3.5 text-amber-600" />
+                <span>Picks lock {formatDate(pickDeadline)}</span>
+              </div>
+            )}
             {currentPick ? (
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-neutral-600">
-                  Pick submitted for this tournament
+              <div className="flex items-center justify-between rounded-lg bg-green-50 px-4 py-3">
+                <p className="text-sm font-medium text-green-800">
+                  Pick submitted
                 </p>
                 <Button asChild variant="outline" size="sm">
                   <Link
                     href={`/games/${gameId}/picks/${currentTournament.id}`}
                   >
-                    View / Change Pick
+                    View / Change
                   </Link>
                 </Button>
               </div>
@@ -121,83 +142,84 @@ export default async function GameHomePage({
               </Button>
             )}
           </CardContent>
+        )}
+      </Card>
+
+      {/* Navigation */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Link href={`/games/${gameId}/leaderboard`}>
+          <Card className="transition-shadow hover:shadow-md">
+            <CardContent className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-3">
+                <Trophy className="h-5 w-5 text-green-600" />
+                <span className="font-medium">Leaderboard</span>
+              </div>
+              <ChevronRight className="h-4 w-4 text-neutral-400" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={`/games/${gameId}/rules`}>
+          <Card className="transition-shadow hover:shadow-md">
+            <CardContent className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-3">
+                <ScrollText className="h-5 w-5 text-blue-600" />
+                <span className="font-medium">Pool Rules</span>
+              </div>
+              <ChevronRight className="h-4 w-4 text-neutral-400" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href={`/games/${gameId}/user-settings`}>
+          <Card className="transition-shadow hover:shadow-md">
+            <CardContent className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-3">
+                <UserCog className="h-5 w-5 text-neutral-600" />
+                <span className="font-medium">Settings</span>
+              </div>
+              <ChevronRight className="h-4 w-4 text-neutral-400" />
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+
+      {/* Manager: Send Announcement */}
+      {isManager && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-4 w-4 text-neutral-500" />
+              <CardTitle className="text-base">
+                Message Members
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <AnnouncementForm gameId={gameId} />
+          </CardContent>
         </Card>
       )}
 
-      {/* Season Leaderboard */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-green-600" />
-              <CardTitle className="text-lg">Season Leaderboard</CardTitle>
-            </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link href={`/games/${gameId}/leaderboard`}>View All</Link>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {leaderboard.length === 0 ? (
-            <p className="py-4 text-center text-sm text-neutral-500">
-              No picks made yet. Be the first to make a pick!
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {leaderboard.slice(0, 10).map((entry) => (
-                <div
-                  key={entry.userId}
-                  className={`flex items-center justify-between rounded-lg px-3 py-2 ${
-                    entry.userId === userId
-                      ? "bg-green-50 font-medium"
-                      : "bg-neutral-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 text-center text-sm font-bold text-neutral-400">
-                      {entry.rank}
-                    </span>
-                    <span className="text-sm">{entry.userName}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-neutral-500">
-                      {entry.pickCount} picks
-                    </span>
-                    <span className="text-sm font-semibold text-green-700">
-                      {formatCurrency(entry.totalEarnings)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Sub-games */}
-      {subGamesList.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {subGamesList.map((sg) => (
-            <Link key={sg.id} href={`/games/${gameId}/leaderboard/${sg.id}`}>
-              <Card className="transition-shadow hover:shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-base">{sg.name}</CardTitle>
-                  {sg.description && (
-                    <CardDescription>{sg.description}</CardDescription>
-                  )}
-                </CardHeader>
-              </Card>
-            </Link>
-          ))}
-        </div>
+      {/* Recent Announcements */}
+      {recentAnnouncements.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Announcements</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {recentAnnouncements.map((a) => (
+              <div
+                key={a.id}
+                className="rounded-lg bg-neutral-50 px-4 py-3"
+              >
+                <p className="text-sm">{a.message}</p>
+                <p className="mt-1 text-xs text-neutral-400">
+                  {a.authorName} &middot; {formatDate(a.createdAt)}
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
-
-      {/* Pick History Link */}
-      <div className="text-center">
-        <Button asChild variant="ghost">
-          <Link href={`/games/${gameId}/picks`}>View Full Pick History</Link>
-        </Button>
-      </div>
     </div>
   );
 }

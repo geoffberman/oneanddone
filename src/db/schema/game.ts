@@ -24,6 +24,7 @@ export const games = pgTable("games", {
     .notNull()
     .references(() => users.id),
   inviteCode: text("invite_code").notNull().unique(),
+  rules: text("rules"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -78,6 +79,22 @@ export const subGameTournaments = pgTable(
   ]
 );
 
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    gameId: integer("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id),
+    message: text("message").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (a) => [index("idx_announcement_game").on(a.gameId)]
+);
+
 // Relations
 export const gamesRelations = relations(games, ({ one, many }) => ({
   season: one(seasons, {
@@ -90,6 +107,7 @@ export const gamesRelations = relations(games, ({ one, many }) => ({
   }),
   members: many(gameMembers),
   subGames: many(subGames),
+  announcements: many(announcements),
 }));
 
 export const gameMembersRelations = relations(gameMembers, ({ one }) => ({
@@ -124,3 +142,14 @@ export const subGameTournamentsRelations = relations(
     }),
   })
 );
+
+export const announcementsRelations = relations(announcements, ({ one }) => ({
+  game: one(games, {
+    fields: [announcements.gameId],
+    references: [games.id],
+  }),
+  author: one(users, {
+    fields: [announcements.authorId],
+    references: [users.id],
+  }),
+}));

@@ -15,6 +15,13 @@
       "when": 1771298977331,
       "tag": "0001_late_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771334876602,
+      "tag": "0002_demonic_firestar",
+      "breakpoints": true
     }
   ]
 }

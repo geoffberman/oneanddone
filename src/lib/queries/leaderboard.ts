@@ -80,6 +80,29 @@ export async function getSubGameLeaderboard(
   }));
 }
 
+export async function getWeeklyLeaderboard(
+  gameId: number,
+  tournamentId: number
+): Promise<LeaderboardEntry[]> {
+  const rows = await db
+    .select({
+      userId: picks.userId,
+      userName: users.name,
+      userImage: users.image,
+      totalEarnings: sql<string>`COALESCE(CAST(${picks.earnings} AS NUMERIC), 0)::text`,
+      pickCount: sql<number>`1::int`,
+    })
+    .from(picks)
+    .innerJoin(users, eq(picks.userId, users.id))
+    .where(and(eq(picks.gameId, gameId), eq(picks.tournamentId, tournamentId)))
+    .orderBy(sql`COALESCE(CAST(${picks.earnings} AS NUMERIC), 0) DESC`);
+
+  return rows.map((row, index) => ({
+    ...row,
+    rank: index + 1,
+  }));
+}
+
 export interface PickHistoryEntry {
   pickId: number;
   tournamentId: number;

@@ -11,6 +11,7 @@ export async function getGameById(gameId: number) {
       seasonYear: seasons.year,
       createdBy: games.createdBy,
       inviteCode: games.inviteCode,
+      rules: games.rules,
       isActive: games.isActive,
       createdAt: games.createdAt,
     })

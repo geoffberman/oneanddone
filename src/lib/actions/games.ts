@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { games, gameMembers, seasons } from "@/db/schema";
+import { games, gameMembers, seasons, users } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { generateInviteCode } from "@/lib/utils/invite-code";
 import { revalidatePath } from "next/cache";
@@ -115,4 +115,45 @@ export async function getUserGames() {
     );
 
   return userGames;
+}
+
+export async function updateGameRules(gameId: number, rules: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  const [membership] = await db
+    .select()
+    .from(gameMembers)
+    .where(
+      and(
+        eq(gameMembers.gameId, gameId),
+        eq(gameMembers.userId, session.user.id),
+        eq(gameMembers.role, "manager")
+      )
+    )
+    .limit(1);
+
+  if (!membership) throw new Error("Only league managers can update rules");
+
+  await db
+    .update(games)
+    .set({ rules: rules.trim() || null, updatedAt: new Date() })
+    .where(eq(games.id, gameId));
+
+  revalidatePath(`/games/${gameId}`);
+}
+
+export async function updateUserProfile(displayName: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  const trimmed = displayName.trim();
+  if (!trimmed) throw new Error("Display name cannot be empty");
+
+  await db
+    .update(users)
+    .set({ displayName: trimmed })
+    .where(eq(users.id, session.user.id));
+
+  revalidatePath("/");
 }
