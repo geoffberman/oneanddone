@@ -8,8 +8,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await syncSchedule();
-    return NextResponse.json({ success: true, ...result });
+    // Debug: show raw API response to check property names
+    const key = process.env.SPORTSDATA_API_KEY;
+    const debugRes = await fetch(
+      "https://api.sportsdata.io/golf/v2/json/CurrentSeason",
+      { headers: { "Ocp-Apim-Subscription-Key": key! } }
+    );
+    const debugData = await debugRes.json();
+
+    return NextResponse.json({
+      debug: true,
+      keys: Object.keys(debugData),
+      data: debugData,
+    });
   } catch (error) {
     console.error("sync-schedule error:", error);
     return NextResponse.json(
