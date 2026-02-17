@@ -9,8 +9,9 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Users, Copy } from "lucide-react";
+import { Users, UserPlus } from "lucide-react";
 import { CopyInviteButton } from "./copy-invite-button";
+import { AddMemberForm } from "./add-member-form";
 
 export default async function MembersPage({
   params,
@@ -30,6 +31,8 @@ export default async function MembersPage({
   ]);
   if (!game || !role) notFound();
 
+  const isManager = role === "manager";
+
   return (
     <div className="space-y-6">
       <div>
@@ -38,6 +41,23 @@ export default async function MembersPage({
           {game.name} &middot; {members.length} members
         </p>
       </div>
+
+      {isManager && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-neutral-500" />
+              <CardTitle className="text-base">Add Member</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <AddMemberForm gameId={gameId} />
+            <p className="mt-2 text-xs text-neutral-500">
+              Add a registered user by their email. They'll be notified by email.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

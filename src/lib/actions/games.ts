@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { games, gameMembers, seasons, users } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { generateInviteCode } from "@/lib/utils/invite-code";
+import { sendMemberAddedEmail } from "@/lib/email";
 import { revalidatePath } from "next/cache";
 
 export async function createGame(name: string) {
@@ -150,6 +151,79 @@ export async function updateGameRules(gameId: number, rules: string) {
     .where(eq(games.id, gameId));
 
   revalidatePath(`/games/${gameId}`);
+}
+
+export async function addMemberByEmail(gameId: number, email: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  // Verify caller is a manager
+  const [membership] = await db
+    .select()
+    .from(gameMembers)
+    .where(
+      and(
+        eq(gameMembers.gameId, gameId),
+        eq(gameMembers.userId, session.user.id),
+        eq(gameMembers.role, "manager")
+      )
+    )
+    .limit(1);
+
+  if (!membership) throw new Error("Only league managers can add members");
+
+  // Find user by email
+  const [targetUser] = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(eq(users.email, email.toLowerCase().trim()))
+    .limit(1);
+
+  if (!targetUser) {
+    throw new Error(
+      "No account found with that email. They need to register first."
+    );
+  }
+
+  // Check if already a member
+  const [existing] = await db
+    .select({ id: gameMembers.id })
+    .from(gameMembers)
+    .where(
+      and(
+        eq(gameMembers.gameId, gameId),
+        eq(gameMembers.userId, targetUser.id)
+      )
+    )
+    .limit(1);
+
+  if (existing) throw new Error("This person is already a member");
+
+  // Get game name for the email
+  const [game] = await db
+    .select({ name: games.name })
+    .from(games)
+    .where(eq(games.id, gameId))
+    .limit(1);
+
+  // Add as player
+  await db.insert(gameMembers).values({
+    gameId,
+    userId: targetUser.id,
+    role: "player",
+    joinedAt: new Date(),
+  });
+
+  // Send notification email (fire and forget)
+  const addedByName = session.user.name || "A league manager";
+  sendMemberAddedEmail(
+    email.toLowerCase().trim(),
+    game?.name || "a league",
+    addedByName
+  ).catch((err) => console.error("[AddMember] Email error:", err));
+
+  revalidatePath(`/games/${gameId}/members`);
+  return { name: targetUser.name };
 }
 
 export async function updateUserProfile(displayName: string) {

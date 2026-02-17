@@ -15,6 +15,12 @@ function getResendClient(): Resend | null {
 
 const FROM_EMAIL = process.env.EMAIL_FROM || "oneanddone@resend.dev";
 
+function getBaseUrl(): string {
+  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL.replace(/\/$/, "");
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
 export async function sendPasswordResetEmail(
   email: string,
   resetUrl: string,
@@ -53,6 +59,55 @@ export async function sendPasswordResetEmail(
     return true;
   } catch (err) {
     console.error("[Email] Error:", err);
+    return false;
+  }
+}
+
+export async function sendMemberAddedEmail(
+  email: string,
+  gameName: string,
+  addedByName: string,
+) {
+  const client = getResendClient();
+  if (!client) {
+    console.log(`[Email] Would send member-added email to ${email} for game "${gameName}"`);
+    return false;
+  }
+
+  const loginUrl = `${getBaseUrl()}/login`;
+
+  try {
+    const { error } = await client.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject: `You've been added to ${gameName} on One and Done`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+          <h2 style="color: #16a34a;">One and Done</h2>
+          <p>Hey! <strong>${addedByName}</strong> added you to the league <strong>${gameName}</strong>.</p>
+          <p>You're all set — log in to make your picks:</p>
+          <p style="margin: 24px 0;">
+            <a href="${loginUrl}"
+               style="background-color: #16a34a; color: white; padding: 12px 24px;
+                      border-radius: 6px; text-decoration: none; display: inline-block;">
+              Go to One and Done
+            </a>
+          </p>
+          <p style="color: #666; font-size: 14px;">
+            If you don't have an account yet, you can register with this email address at the link above.
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("[Email] Failed to send member-added email:", error);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("[Email] Error sending member-added email:", err);
     return false;
   }
 }
