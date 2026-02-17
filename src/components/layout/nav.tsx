@@ -25,7 +25,7 @@ export function Nav({ user }: NavProps) {
             className="flex items-center gap-2 font-bold text-green-600"
           >
             <Image
-              src="/golfer.svg"
+              src="/golf-ball.svg"
               alt="One and Done"
               width={32}
               height={32}

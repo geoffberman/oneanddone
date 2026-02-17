@@ -13,7 +13,7 @@ export default async function LandingPage() {
       <div className="mx-auto max-w-2xl px-4 text-center">
         <div className="mb-8">
           <Image
-            src="/golfer.svg"
+            src="/golf-ball.svg"
             alt="One and Done"
             width={80}
             height={80}

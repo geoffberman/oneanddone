@@ -1,6 +1,9 @@
 import Image from "next/image";
+import Link from "next/link";
 import { signIn } from "@/auth";
+import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -9,13 +12,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const error = params?.error;
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-green-50 to-white">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <Image
-            src="/golfer.svg"
+            src="/golf-ball.svg"
             alt="One and Done"
             width={56}
             height={56}
@@ -26,7 +36,82 @@ export default function LoginPage() {
             Sign in to manage your One and Done picks
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {error && (
+            <div className="rounded-md bg-red-50 p-3 text-center text-sm text-red-600">
+              {error === "CredentialsSignin"
+                ? "Invalid email or password."
+                : "Something went wrong. Please try again."}
+            </div>
+          )}
+
+          <form
+            action={async (formData: FormData) => {
+              "use server";
+              try {
+                await signIn("credentials", {
+                  email: formData.get("email") as string,
+                  password: formData.get("password") as string,
+                  redirectTo: "/dashboard",
+                });
+              } catch (error) {
+                if (
+                  error instanceof Error &&
+                  error.message === "NEXT_REDIRECT"
+                ) {
+                  throw error;
+                }
+                redirect("/login?error=CredentialsSignin");
+              }
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label
+                htmlFor="email"
+                className="mb-1 block text-sm font-medium text-neutral-700"
+              >
+                Email
+              </label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="password"
+                className="mb-1 block text-sm font-medium text-neutral-700"
+              >
+                Password
+              </label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                placeholder="Your password"
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" size="lg">
+              Sign In
+            </Button>
+          </form>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-neutral-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-neutral-500">
+                or continue with
+              </span>
+            </div>
+          </div>
+
           <form
             action={async () => {
               "use server";
@@ -60,6 +145,16 @@ export default function LoginPage() {
               Sign in with Google
             </Button>
           </form>
+
+          <p className="text-center text-sm text-neutral-500">
+            Don&apos;t have an account?{" "}
+            <Link
+              href="/register"
+              className="font-medium text-green-600 hover:text-green-700"
+            >
+              Sign up
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>
