@@ -3,7 +3,7 @@
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { picks, gameMembers } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { validatePick } from "@/lib/utils/pick-validation";
 import { revalidatePath } from "next/cache";
 
@@ -72,7 +72,6 @@ export async function submitPick(
     const [inserted] = await db
       .insert(picks)
       .values({
-        id: sql`nextval('picks_id_seq')`,
         gameId,
         userId: session.user.id,
         tournamentId,
