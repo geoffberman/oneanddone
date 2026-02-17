@@ -57,6 +57,14 @@ export function Nav({ user }: NavProps) {
               {user.name?.charAt(0)?.toUpperCase() || "?"}
             </AvatarFallback>
           </Avatar>
+          <button
+            onClick={() => {
+              window.location.href = "/api/auth/signout";
+            }}
+            className="text-sm text-neutral-500 transition-colors hover:text-neutral-900"
+          >
+            Sign out
+          </button>
         </div>
       </div>
     </header>
