@@ -2,10 +2,10 @@
 
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { games, gameMembers, seasons, users, passwordResetTokens } from "@/db/schema";
+import { games, gameMembers, seasons, users, passwordResetTokens, picks, usedGolfers } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { generateInviteCode } from "@/lib/utils/invite-code";
-import { sendMemberAddedEmail, sendInviteEmail } from "@/lib/email";
+import { sendMemberAddedEmail, sendInviteEmail, sendPasswordResetEmail } from "@/lib/email";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
 
@@ -324,4 +324,166 @@ export async function updateUserProfile(displayName: string) {
     .where(eq(users.id, session.user.id));
 
   revalidatePath("/");
+}
+
+export async function removeMember(
+  gameId: number,
+  targetUserId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) return { success: false, error: "Not authenticated" };
+
+    // Verify caller is a manager of this game
+    const [membership] = await db
+      .select({ id: gameMembers.id })
+      .from(gameMembers)
+      .where(
+        and(
+          eq(gameMembers.gameId, gameId),
+          eq(gameMembers.userId, session.user.id),
+          eq(gameMembers.role, "manager")
+        )
+      )
+      .limit(1);
+
+    if (!membership)
+      return { success: false, error: "Only league managers can remove members" };
+
+    // Prevent manager from removing themselves
+    if (targetUserId === session.user.id)
+      return { success: false, error: "You cannot remove yourself from the game" };
+
+    // Verify target is a member and is a player (not a manager)
+    const [targetMembership] = await db
+      .select({ id: gameMembers.id, role: gameMembers.role })
+      .from(gameMembers)
+      .where(
+        and(
+          eq(gameMembers.gameId, gameId),
+          eq(gameMembers.userId, targetUserId)
+        )
+      )
+      .limit(1);
+
+    if (!targetMembership)
+      return { success: false, error: "This person is not a member of the game" };
+
+    if (targetMembership.role === "manager")
+      return { success: false, error: "Cannot remove a manager" };
+
+    // Delete picks, usedGolfers, and membership in a transaction
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(picks)
+        .where(and(eq(picks.gameId, gameId), eq(picks.userId, targetUserId)));
+      await tx
+        .delete(usedGolfers)
+        .where(and(eq(usedGolfers.gameId, gameId), eq(usedGolfers.userId, targetUserId)));
+      await tx
+        .delete(gameMembers)
+        .where(
+          and(
+            eq(gameMembers.gameId, gameId),
+            eq(gameMembers.userId, targetUserId)
+          )
+        );
+    });
+
+    revalidatePath(`/games/${gameId}/members`);
+    revalidatePath(`/games/${gameId}/leaderboard`);
+    return { success: true };
+  } catch (err) {
+    console.error("[RemoveMember] Unexpected error:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+    };
+  }
+}
+
+export async function sendMemberPasswordReset(
+  gameId: number,
+  targetUserId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) return { success: false, error: "Not authenticated" };
+
+    // Verify caller is a manager of this game
+    const [membership] = await db
+      .select({ id: gameMembers.id })
+      .from(gameMembers)
+      .where(
+        and(
+          eq(gameMembers.gameId, gameId),
+          eq(gameMembers.userId, session.user.id),
+          eq(gameMembers.role, "manager")
+        )
+      )
+      .limit(1);
+
+    if (!membership)
+      return { success: false, error: "Only league managers can reset passwords" };
+
+    // Verify target is a member of this game
+    const [targetMembership] = await db
+      .select({ id: gameMembers.id })
+      .from(gameMembers)
+      .where(
+        and(
+          eq(gameMembers.gameId, gameId),
+          eq(gameMembers.userId, targetUserId)
+        )
+      )
+      .limit(1);
+
+    if (!targetMembership)
+      return { success: false, error: "This person is not a member of the game" };
+
+    // Get target user's email
+    const [targetUser] = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+
+    if (!targetUser?.email)
+      return { success: false, error: "User has no email address on file" };
+
+    // Delete any existing tokens for this user
+    await db
+      .delete(passwordResetTokens)
+      .where(eq(passwordResetTokens.userId, targetUserId));
+
+    // Generate a new token (1 hour expiry)
+    const token = crypto.randomBytes(32).toString("hex");
+    await db.insert(passwordResetTokens).values({
+      id: crypto.randomUUID(),
+      userId: targetUserId,
+      token,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      createdAt: new Date(),
+    });
+
+    const baseUrl =
+      process.env.NEXTAUTH_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000");
+    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+
+    const emailSent = await sendPasswordResetEmail(targetUser.email, resetUrl);
+    if (!emailSent) {
+      console.log(`[MemberPasswordReset] ${targetUser.email}: ${resetUrl}`);
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("[MemberPasswordReset] Unexpected error:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+    };
+  }
 }

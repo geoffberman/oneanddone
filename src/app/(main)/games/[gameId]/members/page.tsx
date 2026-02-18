@@ -7,11 +7,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Users, UserPlus } from "lucide-react";
 import { CopyInviteButton } from "./copy-invite-button";
 import { AddMemberForm } from "./add-member-form";
+import { MemberList } from "./member-list";
 
 export default async function MembersPage({
   params,
@@ -86,38 +85,18 @@ export default async function MembersPage({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {members.map((member) => (
-              <div
-                key={member.id}
-                className="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2.5"
-              >
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={member.userImage || undefined} />
-                    <AvatarFallback className="text-xs">
-                      {member.userName?.charAt(0)?.toUpperCase() || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm font-medium">
-                    {member.userName}
-                    {member.userId === userId && (
-                      <span className="ml-1 text-xs text-neutral-400">
-                        (you)
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <Badge
-                  variant={
-                    member.role === "manager" ? "default" : "secondary"
-                  }
-                >
-                  {member.role}
-                </Badge>
-              </div>
-            ))}
-          </div>
+          <MemberList
+            gameId={gameId}
+            members={members.map((m) => ({
+              id: m.id,
+              userId: m.userId,
+              userName: m.userName,
+              userImage: m.userImage,
+              role: m.role,
+            }))}
+            currentUserId={userId}
+            isManager={isManager}
+          />
         </CardContent>
       </Card>
     </div>
