@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { KeyRound, UserMinus } from "lucide-react";
-import { removeMember, sendMemberPasswordReset } from "@/lib/actions/games";
+import { removeMember, sendMemberPasswordReset, setMemberPassword } from "@/lib/actions/games";
 
 interface Member {
   id: number;
@@ -41,6 +41,7 @@ export function MemberList({
   const router = useRouter();
   const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
   const [resetTarget, setResetTarget] = useState<Member | null>(null);
+  const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleRemove() {
@@ -75,6 +76,25 @@ export function MemberList({
       }
     } catch {
       toast.error("Failed to send reset email. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSetPassword() {
+    if (!resetTarget) return;
+    setLoading(true);
+    try {
+      const result = await setMemberPassword(gameId, resetTarget.userId, newPassword);
+      if (result.success) {
+        toast.success(`Password updated for ${resetTarget.userName || "member"}`);
+        setResetTarget(null);
+        setNewPassword("");
+      } else {
+        toast.error(result.error);
+      }
+    } catch {
+      toast.error("Failed to set password. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -171,36 +191,94 @@ export function MemberList({
         </DialogContent>
       </Dialog>
 
-      {/* Reset Password Dialog */}
+      {/* Manage Password Dialog */}
       <Dialog
         open={!!resetTarget}
         onOpenChange={(open) => {
-          if (!open) setResetTarget(null);
+          if (!open) {
+            setResetTarget(null);
+            setNewPassword("");
+          }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>
-              Send a password reset email to{" "}
-              {resetTarget?.userName || "this member"}? They will receive an
-              email with a link to set a new password.
-            </DialogDescription>
+            <DialogTitle>
+              Manage Password — {resetTarget?.userName || "Member"}
+            </DialogTitle>
           </DialogHeader>
-          <DialogFooter>
+
+          {/* Set password directly */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Set password directly</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="New password..."
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setNewPassword("oneanddone")}
+                className="shrink-0 text-xs"
+              >
+                Use default
+              </Button>
+            </div>
+            <Button
+              className="w-full bg-green-600 hover:bg-green-700"
+              onClick={handleSetPassword}
+              disabled={loading || newPassword.length < 8}
+            >
+              {loading ? "Saving..." : "Set Password"}
+            </Button>
+            {newPassword.length > 0 && newPassword.length < 8 && (
+              <p className="text-xs text-red-500">
+                Password must be at least 8 characters
+              </p>
+            )}
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">or</span>
+            </div>
+          </div>
+
+          {/* Send reset email */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Send a reset link by email</p>
+            <p className="text-xs text-neutral-500">
+              {resetTarget?.userName || "The member"} will receive an email
+              with a link to set their own password.
+            </p>
             <Button
               variant="outline"
-              onClick={() => setResetTarget(null)}
+              className="w-full"
+              onClick={handleResetPassword}
+              disabled={loading}
+            >
+              {loading ? "Sending..." : "Send Reset Email"}
+            </Button>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setResetTarget(null);
+                setNewPassword("");
+              }}
               disabled={loading}
             >
               Cancel
-            </Button>
-            <Button
-              onClick={handleResetPassword}
-              disabled={loading}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {loading ? "Sending..." : "Send Reset Email"}
             </Button>
           </DialogFooter>
         </DialogContent>
