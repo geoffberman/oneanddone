@@ -21,6 +21,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if('serviceWorker'in navigator){navigator.serviceWorker.getRegistrations().then(function(r){for(var s of r)s.unregister();})}`,
+          }}
+        />
         {children}
         <Toaster position="top-right" />
       </body>
