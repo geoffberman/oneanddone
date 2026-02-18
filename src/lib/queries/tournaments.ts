@@ -55,10 +55,19 @@ export async function getLatestSeason() {
   return season || null;
 }
 
+let _ensuredWorldRanking = false;
+async function ensureWorldRankingColumn() {
+  if (_ensuredWorldRanking) return;
+  await db.execute(sql`ALTER TABLE golfers ADD COLUMN IF NOT EXISTS world_ranking integer`);
+  _ensuredWorldRanking = true;
+}
+
 export async function getTournamentField(
   tournamentId: number,
   options?: { gameId?: number; userId?: string }
 ) {
+  await ensureWorldRankingColumn();
+
   const fieldEntries = await db
     .select({
       fieldId: tournamentFields.id,
