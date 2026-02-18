@@ -372,23 +372,22 @@ export async function removeMember(
     if (targetMembership.role === "manager")
       return { success: false, error: "Cannot remove a manager" };
 
-    // Delete picks, usedGolfers, and membership in a transaction
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(picks)
-        .where(and(eq(picks.gameId, gameId), eq(picks.userId, targetUserId)));
-      await tx
-        .delete(usedGolfers)
-        .where(and(eq(usedGolfers.gameId, gameId), eq(usedGolfers.userId, targetUserId)));
-      await tx
-        .delete(gameMembers)
-        .where(
-          and(
-            eq(gameMembers.gameId, gameId),
-            eq(gameMembers.userId, targetUserId)
-          )
-        );
-    });
+    // Delete picks, usedGolfers, and membership sequentially
+    // (Neon HTTP driver does not support transactions)
+    await db
+      .delete(picks)
+      .where(and(eq(picks.gameId, gameId), eq(picks.userId, targetUserId)));
+    await db
+      .delete(usedGolfers)
+      .where(and(eq(usedGolfers.gameId, gameId), eq(usedGolfers.userId, targetUserId)));
+    await db
+      .delete(gameMembers)
+      .where(
+        and(
+          eq(gameMembers.gameId, gameId),
+          eq(gameMembers.userId, targetUserId)
+        )
+      );
 
     revalidatePath(`/games/${gameId}/members`);
     revalidatePath(`/games/${gameId}/leaderboard`);
