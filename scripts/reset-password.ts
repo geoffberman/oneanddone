@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import { neon } from "@neondatabase/serverless";
-import dotenv from "dotenv";
+import { config } from "dotenv";
 
-dotenv.config({ path: ".env.local" });
+config({ path: ".env.local" });
 
 const emails = process.argv.slice(2, -1);
 const newPassword = process.argv[process.argv.length - 1];
