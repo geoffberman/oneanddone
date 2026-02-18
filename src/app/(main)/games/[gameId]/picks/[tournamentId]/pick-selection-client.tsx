@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Search, Check, X, AlertCircle } from "lucide-react";
+import { Search, Check, X, AlertCircle, Info } from "lucide-react";
 
 interface FieldEntry {
   fieldId: number;
@@ -52,21 +52,30 @@ function GolferCard({
   alternateId,
   isLocked,
   onSelect,
+  onInfo,
 }: {
   golfer: FieldEntry;
   primaryId: number | null;
   alternateId: number | null;
   isLocked: boolean;
   onSelect: (id: number) => void;
+  onInfo: (golfer: FieldEntry) => void;
 }) {
   const isPrimary = golfer.golferId === primaryId;
   const isAlternate = golfer.golferId === alternateId;
   const isDisabled = golfer.isWithdrawn || golfer.isUsed || isLocked;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => !isDisabled && onSelect(golfer.golferId)}
-      disabled={isDisabled}
+      onKeyDown={(e) => {
+        if ((e.key === "Enter" || e.key === " ") && !isDisabled) {
+          e.preventDefault();
+          onSelect(golfer.golferId);
+        }
+      }}
       className={`flex w-full flex-col rounded-lg border px-3 py-2 text-left transition-colors ${
         isPrimary
           ? "border-green-400 bg-green-50 ring-1 ring-green-300"
@@ -86,6 +95,17 @@ function GolferCard({
         <span className="truncate text-sm font-medium">
           {golfer.firstName} {golfer.lastName}
         </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onInfo(golfer);
+          }}
+          className="ml-auto shrink-0 rounded p-0.5 text-neutral-300 transition-colors hover:text-neutral-500"
+          title="Recent results"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-1">
         {golfer.country && (
@@ -114,7 +134,7 @@ function GolferCard({
           </Badge>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -138,6 +158,31 @@ export function PickSelectionClient({
   const [selectingSlot, setSelectingSlot] = useState<
     "primary" | "alternate"
   >("primary");
+  const [infoGolfer, setInfoGolfer] = useState<FieldEntry | null>(null);
+  const [infoResults, setInfoResults] = useState<
+    {
+      tournamentName: string;
+      startDate: string;
+      position: number | null;
+      totalScoreToPar: number | null;
+      earnings: string | null;
+      madeCut: boolean | null;
+      isWithdrawn: boolean | null;
+    }[]
+    | null
+  >(null);
+  const [infoLoading, setInfoLoading] = useState(false);
+
+  function openGolferInfo(golfer: FieldEntry) {
+    setInfoGolfer(golfer);
+    setInfoResults(null);
+    setInfoLoading(true);
+    fetch(`/api/golf/golfer-results?golferId=${golfer.golferId}`)
+      .then((res) => (res.ok ? res.json() : { results: [] }))
+      .then((data) => setInfoResults(data.results))
+      .catch(() => setInfoResults([]))
+      .finally(() => setInfoLoading(false));
+  }
 
   const filteredField = field.filter((g) => {
     const name = `${g.firstName} ${g.lastName}`.toLowerCase();
@@ -308,6 +353,7 @@ export function PickSelectionClient({
                     alternateId={alternateId}
                     isLocked={isLocked}
                     onSelect={selectGolfer}
+                    onInfo={openGolferInfo}
                   />
                 ))}
               </div>
@@ -339,6 +385,7 @@ export function PickSelectionClient({
                       alternateId={alternateId}
                       isLocked={isLocked}
                       onSelect={selectGolfer}
+                      onInfo={openGolferInfo}
                     />
                   ))}
                 </div>
@@ -406,6 +453,79 @@ export function PickSelectionClient({
               {submitting ? "Submitting..." : "Confirm Pick"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Golfer Info Dialog */}
+      <Dialog
+        open={!!infoGolfer}
+        onOpenChange={(open) => {
+          if (!open) setInfoGolfer(null);
+        }}
+      >
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              Recent Results — {infoGolfer?.firstName} {infoGolfer?.lastName}
+            </DialogTitle>
+          </DialogHeader>
+
+          {infoLoading && (
+            <p className="py-6 text-center text-sm text-neutral-500">
+              Loading...
+            </p>
+          )}
+
+          {!infoLoading && infoResults && infoResults.length === 0 && (
+            <p className="py-6 text-center text-sm text-neutral-500">
+              No results found
+            </p>
+          )}
+
+          {!infoLoading && infoResults && infoResults.length > 0 && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-left text-neutral-400">
+                  <th className="py-1">Tournament</th>
+                  <th className="w-16 py-1 text-right">Pos</th>
+                  <th className="w-16 py-1 text-right">Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {infoResults.map((r, i) => (
+                  <tr key={i} className="border-b border-neutral-100">
+                    <td className="py-1.5">
+                      <div className="font-medium">{r.tournamentName}</div>
+                      <div className="text-neutral-400">
+                        {new Date(r.startDate).toLocaleDateString("en-US", {
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </div>
+                    </td>
+                    <td className="py-1.5 text-right font-medium">
+                      {r.isWithdrawn
+                        ? "WD"
+                        : r.madeCut === false
+                          ? "MC"
+                          : r.position
+                            ? `T${r.position}`
+                            : "—"}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {r.totalScoreToPar != null
+                        ? r.totalScoreToPar === 0
+                          ? "E"
+                          : r.totalScoreToPar > 0
+                            ? `+${r.totalScoreToPar}`
+                            : `${r.totalScoreToPar}`
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </DialogContent>
       </Dialog>
     </div>

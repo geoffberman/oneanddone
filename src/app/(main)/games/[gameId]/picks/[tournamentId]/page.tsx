@@ -8,6 +8,7 @@ import { getTournamentField } from "@/lib/queries/tournaments";
 import { getUserPick } from "@/lib/actions/picks";
 import { formatDate } from "@/lib/utils";
 import { PickSelectionClient } from "./pick-selection-client";
+import { TournamentInfoButton } from "@/components/tournament-info-button";
 
 export default async function PickSelectionPage({
   params,
@@ -46,7 +47,10 @@ export default async function PickSelectionPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">{tournament.name}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold">{tournament.name}</h1>
+          <TournamentInfoButton tournamentName={tournament.name} />
+        </div>
         <div className="mt-1 flex flex-wrap gap-3 text-sm text-neutral-500">
           <span>{tournament.venue}</span>
           <span>{tournament.location}</span>
