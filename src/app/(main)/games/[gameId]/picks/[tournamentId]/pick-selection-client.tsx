@@ -38,6 +38,7 @@ interface FieldEntry {
 interface PickSelectionClientProps {
   gameId: number;
   tournamentId: number;
+  tournamentName: string;
   field: FieldEntry[];
   existingPick: {
     primaryGolferId: number;
@@ -141,6 +142,7 @@ function GolferCard({
 export function PickSelectionClient({
   gameId,
   tournamentId,
+  tournamentName,
   field,
   existingPick,
   isLocked,
@@ -161,13 +163,11 @@ export function PickSelectionClient({
   const [infoGolfer, setInfoGolfer] = useState<FieldEntry | null>(null);
   const [infoResults, setInfoResults] = useState<
     {
-      tournamentName: string;
-      startDate: string;
-      position: number | null;
-      totalScoreToPar: number | null;
-      earnings: string | null;
-      madeCut: boolean | null;
-      isWithdrawn: boolean | null;
+      year: number;
+      position: number;
+      totalScoreToPar: number;
+      earnings: number;
+      madeCut: boolean;
     }[]
     | null
   >(null);
@@ -177,7 +177,12 @@ export function PickSelectionClient({
     setInfoGolfer(golfer);
     setInfoResults(null);
     setInfoLoading(true);
-    fetch(`/api/golf/golfer-results?golferId=${golfer.golferId}`)
+    const params = new URLSearchParams({
+      tournamentName,
+      firstName: golfer.firstName,
+      lastName: golfer.lastName,
+    });
+    fetch(`/api/golf/golfer-results?${params}`)
       .then((res) => (res.ok ? res.json() : { results: [] }))
       .then((data) => setInfoResults(data.results))
       .catch(() => setInfoResults([]))
@@ -463,11 +468,14 @@ export function PickSelectionClient({
           if (!open) setInfoGolfer(null);
         }}
       >
-        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-lg">
-              Recent Results — {infoGolfer?.firstName} {infoGolfer?.lastName}
+              {infoGolfer?.firstName} {infoGolfer?.lastName}
             </DialogTitle>
+            <DialogDescription>
+              Results at {tournamentName}
+            </DialogDescription>
           </DialogHeader>
 
           {infoLoading && (
@@ -478,48 +486,44 @@ export function PickSelectionClient({
 
           {!infoLoading && infoResults && infoResults.length === 0 && (
             <p className="py-6 text-center text-sm text-neutral-500">
-              No results found
+              No history at this tournament
             </p>
           )}
 
           {!infoLoading && infoResults && infoResults.length > 0 && (
-            <table className="w-full text-xs">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-neutral-400">
-                  <th className="py-1">Tournament</th>
-                  <th className="w-16 py-1 text-right">Pos</th>
-                  <th className="w-16 py-1 text-right">Score</th>
+                  <th className="py-1.5">Year</th>
+                  <th className="py-1.5 text-right">Finish</th>
+                  <th className="py-1.5 text-right">Score</th>
+                  <th className="py-1.5 text-right">Earnings</th>
                 </tr>
               </thead>
               <tbody>
-                {infoResults.map((r, i) => (
-                  <tr key={i} className="border-b border-neutral-100">
-                    <td className="py-1.5">
-                      <div className="font-medium">{r.tournamentName}</div>
-                      <div className="text-neutral-400">
-                        {new Date(r.startDate).toLocaleDateString("en-US", {
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </div>
-                    </td>
-                    <td className="py-1.5 text-right font-medium">
-                      {r.isWithdrawn
-                        ? "WD"
-                        : r.madeCut === false
-                          ? "MC"
-                          : r.position
-                            ? `T${r.position}`
-                            : "—"}
+                {infoResults.map((r) => (
+                  <tr key={r.year} className="border-b border-neutral-100">
+                    <td className="py-1.5 font-medium">{r.year}</td>
+                    <td className="py-1.5 text-right">
+                      {!r.madeCut
+                        ? "MC"
+                        : r.position > 0
+                          ? `T${r.position}`
+                          : "—"}
                     </td>
                     <td className="py-1.5 text-right">
-                      {r.totalScoreToPar != null
-                        ? r.totalScoreToPar === 0
-                          ? "E"
-                          : r.totalScoreToPar > 0
-                            ? `+${r.totalScoreToPar}`
-                            : `${r.totalScoreToPar}`
-                        : "—"}
+                      {r.totalScoreToPar === 0
+                        ? "E"
+                        : r.totalScoreToPar > 0
+                          ? `+${r.totalScoreToPar}`
+                          : `${r.totalScoreToPar}`}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {r.earnings >= 1_000_000
+                        ? `$${(r.earnings / 1_000_000).toFixed(1)}M`
+                        : r.earnings >= 1_000
+                          ? `$${(r.earnings / 1_000).toFixed(0)}K`
+                          : `$${r.earnings.toLocaleString()}`}
                     </td>
                   </tr>
                 ))}

@@ -71,6 +71,7 @@ export default async function PickSelectionPage({
       <PickSelectionClient
         gameId={gameId}
         tournamentId={tournamentId}
+        tournamentName={tournament.name}
         field={field}
         existingPick={
           existingPick
