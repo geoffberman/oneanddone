@@ -11,32 +11,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No API key" }, { status: 500 });
   }
 
-  try {
-    // Fetch players and return the first one's full field list
-    const res = await fetch(
-      "https://api.sportsdata.io/golf/v2/json/Players",
-      { headers: { "Ocp-Apim-Subscription-Key": key } }
-    );
-    const players = await res.json();
-    const sample = players[0];
+  const base = "https://api.sportsdata.io/golf/v2/json";
+  const headers = { "Ocp-Apim-Subscription-Key": key };
+  const results: Record<string, unknown> = {};
 
-    // Also check a top player - Scottie Scheffler (likely has a ranking)
-    const topPlayer = players.find(
-      (p: Record<string, unknown>) =>
-        (p.LastName as string)?.toLowerCase() === "scheffler" ||
-        (p.LastName as string)?.toLowerCase() === "mcilroy"
-    );
-
-    return NextResponse.json({
-      totalPlayers: players.length,
-      sampleFieldNames: Object.keys(sample),
-      samplePlayer: sample,
-      topPlayer: topPlayer || "not found",
-    });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
-    );
+  // Try WorldGolfRankings endpoint
+  for (const endpoint of [
+    "WorldGolfRankings",
+    "WorldGolfRankings/2026",
+    "PlayerSeasonStats/2026",
+  ]) {
+    try {
+      const res = await fetch(`${base}/${endpoint}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : data?.Players || data?.Rankings || [data];
+        results[endpoint] = {
+          status: res.status,
+          count: items.length,
+          sampleFields: items[0] ? Object.keys(items[0]) : [],
+          sample: items[0] || null,
+        };
+      } else {
+        results[endpoint] = { status: res.status, error: res.statusText };
+      }
+    } catch (err) {
+      results[endpoint] = { error: err instanceof Error ? err.message : String(err) };
+    }
   }
+
+  return NextResponse.json(results);
 }
