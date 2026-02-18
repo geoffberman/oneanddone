@@ -71,6 +71,7 @@ export interface SportsDataPlayer {
   LastName: string;
   Country: string;
   PhotoUrl: string;
+  WorldGolfRank: number | null;
 }
 
 export interface SportsDataLeaderboard {

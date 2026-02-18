@@ -63,6 +63,11 @@ export async function syncSchedule() {
     `);
   }
 
+  // Ensure world_ranking column exists
+  await db.execute(sql`
+    ALTER TABLE golfers ADD COLUMN IF NOT EXISTS world_ranking integer
+  `);
+
   // Bulk upsert golfers (batches of 200 to stay within param limits)
   const apiPlayers = await fetchPlayers();
   const BATCH_SIZE = 200;
@@ -70,17 +75,19 @@ export async function syncSchedule() {
   for (let i = 0; i < apiPlayers.length; i += BATCH_SIZE) {
     const batch = apiPlayers.slice(i, i + BATCH_SIZE);
     const golferValues = batch.map((p) => {
-      return sql`(${p.PlayerID}, ${p.FirstName}, ${p.LastName}, ${p.Country}, ${p.PhotoUrl}, ${now}, ${now})`;
+      const rank = p.WorldGolfRank ?? null;
+      return sql`(${p.PlayerID}, ${p.FirstName}, ${p.LastName}, ${p.Country}, ${p.PhotoUrl}, ${rank}, ${now}, ${now})`;
     });
 
     await db.execute(sql`
-      INSERT INTO golfers (external_player_id, first_name, last_name, country, photo_url, created_at, updated_at)
+      INSERT INTO golfers (external_player_id, first_name, last_name, country, photo_url, world_ranking, created_at, updated_at)
       VALUES ${sql.join(golferValues, sql`, `)}
       ON CONFLICT (external_player_id) DO UPDATE SET
         first_name = EXCLUDED.first_name,
         last_name = EXCLUDED.last_name,
         country = EXCLUDED.country,
         photo_url = EXCLUDED.photo_url,
+        world_ranking = EXCLUDED.world_ranking,
         updated_at = EXCLUDED.updated_at
     `);
   }

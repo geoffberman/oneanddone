@@ -58,6 +58,7 @@ export const golfers = pgTable("golfers", {
   lastName: text("last_name").notNull(),
   country: text("country"),
   photoUrl: text("photo_url"),
+  worldRanking: integer("world_ranking"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -30,6 +30,7 @@ interface FieldEntry {
   lastName: string;
   country: string | null;
   photoUrl: string | null;
+  worldRanking: number | null;
   isWithdrawn: boolean;
   isUsed: boolean;
 }
@@ -234,6 +235,11 @@ export function PickSelectionClient({
               }`}
             >
               <div className="flex items-center gap-3">
+                {golfer.worldRanking && (
+                  <span className="w-8 text-right text-xs font-medium text-neutral-400">
+                    #{golfer.worldRanking}
+                  </span>
+                )}
                 <div>
                   <span className="text-sm font-medium">
                     {golfer.firstName} {golfer.lastName}

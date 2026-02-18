@@ -6,7 +6,7 @@ import {
   usedGolfers,
   seasons,
 } from "@/db/schema";
-import { eq, and, gte, asc, desc } from "drizzle-orm";
+import { eq, and, gte, asc, desc, sql } from "drizzle-orm";
 
 export async function getCurrentTournament() {
   const now = new Date();
@@ -67,12 +67,13 @@ export async function getTournamentField(
       lastName: golfers.lastName,
       country: golfers.country,
       photoUrl: golfers.photoUrl,
+      worldRanking: golfers.worldRanking,
       isWithdrawn: tournamentFields.isWithdrawn,
     })
     .from(tournamentFields)
     .innerJoin(golfers, eq(tournamentFields.golferId, golfers.id))
     .where(eq(tournamentFields.tournamentId, tournamentId))
-    .orderBy(golfers.lastName, golfers.firstName);
+    .orderBy(sql`COALESCE(${golfers.worldRanking}, 9999)`, golfers.lastName, golfers.firstName);
 
   // If game context provided, mark which golfers are already used
   if (options?.gameId && options?.userId) {
