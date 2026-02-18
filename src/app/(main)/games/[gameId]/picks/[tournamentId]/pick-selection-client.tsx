@@ -46,7 +46,7 @@ interface PickSelectionClientProps {
   isLocked: boolean;
 }
 
-function GolferRow({
+function GolferCard({
   golfer,
   primaryId,
   alternateId,
@@ -67,54 +67,50 @@ function GolferRow({
     <button
       onClick={() => !isDisabled && onSelect(golfer.golferId)}
       disabled={isDisabled}
-      className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${
+      className={`flex w-full flex-col rounded-lg border px-3 py-2 text-left transition-colors ${
         isPrimary
-          ? "bg-green-50 ring-1 ring-green-300"
+          ? "border-green-400 bg-green-50 ring-1 ring-green-300"
           : isAlternate
-            ? "bg-blue-50 ring-1 ring-blue-300"
+            ? "border-blue-400 bg-blue-50 ring-1 ring-blue-300"
             : isDisabled
-              ? "cursor-not-allowed opacity-50"
-              : "hover:bg-neutral-50"
+              ? "cursor-not-allowed border-neutral-200 opacity-50"
+              : "border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50"
       }`}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {golfer.worldRanking && (
-          <span className="w-8 text-right text-xs font-medium text-neutral-400">
+          <span className="text-xs font-medium text-neutral-400">
             #{golfer.worldRanking}
           </span>
         )}
-        <div>
-          <span className="text-sm font-medium">
-            {golfer.firstName} {golfer.lastName}
-          </span>
-          {golfer.country && (
-            <span className="ml-2 text-xs text-neutral-400">
-              {golfer.country}
-            </span>
-          )}
-        </div>
+        <span className="truncate text-sm font-medium">
+          {golfer.firstName} {golfer.lastName}
+        </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="mt-1 flex flex-wrap items-center gap-1">
+        {golfer.country && (
+          <span className="text-xs text-neutral-400">{golfer.country}</span>
+        )}
         {golfer.isUsed && (
-          <Badge variant="secondary" className="text-xs">
-            Already Used
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+            Used
           </Badge>
         )}
         {golfer.isWithdrawn && (
-          <Badge variant="destructive" className="text-xs">
+          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
             WD
           </Badge>
         )}
         {isPrimary && (
-          <Badge variant="success" className="text-xs">
-            <Check className="mr-1 h-3 w-3" />
+          <Badge variant="success" className="text-[10px] px-1.5 py-0">
+            <Check className="mr-0.5 h-2.5 w-2.5" />
             Primary
           </Badge>
         )}
         {isAlternate && (
-          <Badge className="bg-blue-100 text-xs text-blue-800">
-            <Check className="mr-1 h-3 w-3" />
-            Alternate
+          <Badge className="bg-blue-100 text-[10px] px-1.5 py-0 text-blue-800">
+            <Check className="mr-0.5 h-2.5 w-2.5" />
+            Alt
           </Badge>
         )}
       </div>
@@ -300,12 +296,12 @@ export function PickSelectionClient({
 
           const hasAnyRanking = filteredField.some((g) => g.worldRanking);
 
-          // If no rankings data, show flat list
+          // If no rankings data, show flat grid
           if (!hasAnyRanking) {
             return (
-              <div className="space-y-1">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredField.map((golfer) => (
-                  <GolferRow
+                  <GolferCard
                     key={golfer.golferId}
                     golfer={golfer}
                     primaryId={primaryId}
@@ -326,7 +322,7 @@ export function PickSelectionClient({
             if (golfers.length === 0) return null;
             return (
               <div key={tier.label}>
-                <div className="mb-1 flex items-center gap-2 px-1">
+                <div className="mb-2 flex items-center gap-2 px-1">
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     {tier.label}
                   </h3>
@@ -334,9 +330,9 @@ export function PickSelectionClient({
                     ({golfers.length})
                   </span>
                 </div>
-                <div className="space-y-1">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {golfers.map((golfer) => (
-                    <GolferRow
+                    <GolferCard
                       key={golfer.golferId}
                       golfer={golfer}
                       primaryId={primaryId}
