@@ -53,7 +53,7 @@ export default async function MembersPage({
           <CardContent>
             <AddMemberForm gameId={gameId} />
             <p className="mt-2 text-xs text-neutral-500">
-              Add a registered user by their email. They'll be notified by email.
+              Add anyone by email. New users will get an invite to set up their account.
             </p>
           </CardContent>
         </Card>
