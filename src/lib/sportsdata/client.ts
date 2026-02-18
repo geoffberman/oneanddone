@@ -40,6 +40,12 @@ export async function fetchCurrentSeason(): Promise<SportsDataSeason> {
   return fetchApi("CurrentSeason");
 }
 
+export async function fetchPlayerSeasonStats(
+  season: number
+): Promise<SportsDataPlayerSeasonStat[]> {
+  return fetchApi(`PlayerSeasonStats/${season}`);
+}
+
 // SportsData.io API response types
 export interface SportsDataSeason {
   SeasonID: number;
@@ -100,4 +106,11 @@ export interface SportsDataRound {
   Number: number;
   Day: string;
   TeeTime: string | null;
+}
+
+export interface SportsDataPlayerSeasonStat {
+  PlayerID: number;
+  Name: string;
+  WorldGolfRank: number | null;
+  WorldGolfRankLastWeek: number | null;
 }

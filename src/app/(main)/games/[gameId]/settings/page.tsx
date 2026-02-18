@@ -76,6 +76,7 @@ export default async function SettingsPage({
 
       <SettingsClient
         gameId={gameId}
+        gameName={game.name}
         subGames={subGamesWithTournaments}
         tournaments={seasonTournaments.map((t) => ({
           id: t.id,

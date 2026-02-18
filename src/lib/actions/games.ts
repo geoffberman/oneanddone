@@ -151,6 +151,36 @@ export async function updateGameRules(gameId: number, rules: string) {
   revalidatePath(`/games/${gameId}`);
 }
 
+export async function updateGameName(gameId: number, name: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Game name cannot be empty");
+
+  const [membership] = await db
+    .select({ id: gameMembers.id })
+    .from(gameMembers)
+    .where(
+      and(
+        eq(gameMembers.gameId, gameId),
+        eq(gameMembers.userId, session.user.id),
+        eq(gameMembers.role, "manager")
+      )
+    )
+    .limit(1);
+
+  if (!membership) throw new Error("Only league managers can rename the game");
+
+  await db
+    .update(games)
+    .set({ name: trimmed, updatedAt: new Date() })
+    .where(eq(games.id, gameId));
+
+  revalidatePath(`/games/${gameId}`);
+  revalidatePath(`/games/${gameId}/settings`);
+}
+
 export async function addMemberByEmail(
   gameId: number,
   email: string

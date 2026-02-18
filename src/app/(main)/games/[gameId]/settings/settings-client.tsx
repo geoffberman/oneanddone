@@ -7,6 +7,7 @@ import {
   updateSubGame,
   deleteSubGame,
 } from "@/lib/actions/sub-games";
+import { updateGameName } from "@/lib/actions/games";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Trash2, Save, Pencil } from "lucide-react";
 
 interface SubGame {
   id: number;
@@ -34,21 +35,47 @@ interface Tournament {
 
 interface SettingsClientProps {
   gameId: number;
+  gameName: string;
   subGames: SubGame[];
   tournaments: Tournament[];
 }
 
 export function SettingsClient({
   gameId,
+  gameName,
   subGames: initialSubGames,
   tournaments,
 }: SettingsClientProps) {
   const router = useRouter();
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(gameName);
+  const [savingName, setSavingName] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newTournamentIds, setNewTournamentIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
+
+  async function handleSaveName() {
+    if (!nameValue.trim() || nameValue.trim() === gameName) {
+      setEditingName(false);
+      setNameValue(gameName);
+      return;
+    }
+    setSavingName(true);
+    try {
+      await updateGameName(gameId, nameValue.trim());
+      toast.success("League name updated!");
+      setEditingName(false);
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update name"
+      );
+    } finally {
+      setSavingName(false);
+    }
+  }
 
   async function handleCreate() {
     if (!newName.trim()) return;
@@ -91,6 +118,62 @@ export function SettingsClient({
 
   return (
     <div className="space-y-4">
+      {/* League Name */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">League Name</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={nameValue}
+                onChange={(e) => setNameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveName();
+                  if (e.key === "Escape") {
+                    setEditingName(false);
+                    setNameValue(gameName);
+                  }
+                }}
+                autoFocus
+                className="max-w-xs"
+              />
+              <Button
+                size="sm"
+                onClick={handleSaveName}
+                disabled={savingName}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Save className="mr-1.5 h-3.5 w-3.5" />
+                {savingName ? "Saving..." : "Save"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingName(false);
+                  setNameValue(gameName);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{gameName}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditingName(true)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Sub-Games</h2>
         <Button

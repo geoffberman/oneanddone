@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import {
   fetchTournamentsBySeason,
   fetchPlayers,
+  fetchPlayerSeasonStats,
   fetchCurrentSeason,
 } from "./client";
 
@@ -75,26 +76,56 @@ export async function syncSchedule() {
   for (let i = 0; i < apiPlayers.length; i += BATCH_SIZE) {
     const batch = apiPlayers.slice(i, i + BATCH_SIZE);
     const golferValues = batch.map((p) => {
-      const rank = p.WorldGolfRank ?? null;
-      return sql`(${p.PlayerID}, ${p.FirstName}, ${p.LastName}, ${p.Country}, ${p.PhotoUrl}, ${rank}, ${now}, ${now})`;
+      return sql`(${p.PlayerID}, ${p.FirstName}, ${p.LastName}, ${p.Country}, ${p.PhotoUrl}, ${now}, ${now})`;
     });
 
     await db.execute(sql`
-      INSERT INTO golfers (external_player_id, first_name, last_name, country, photo_url, world_ranking, created_at, updated_at)
+      INSERT INTO golfers (external_player_id, first_name, last_name, country, photo_url, created_at, updated_at)
       VALUES ${sql.join(golferValues, sql`, `)}
       ON CONFLICT (external_player_id) DO UPDATE SET
         first_name = EXCLUDED.first_name,
         last_name = EXCLUDED.last_name,
         country = EXCLUDED.country,
         photo_url = EXCLUDED.photo_url,
-        world_ranking = EXCLUDED.world_ranking,
         updated_at = EXCLUDED.updated_at
     `);
+  }
+
+  // Fetch world rankings from PlayerSeasonStats endpoint (separate from Players)
+  let rankingsUpdated = 0;
+  try {
+    const seasonStats = await fetchPlayerSeasonStats(currentSeason.SeasonID);
+    const rankMap = new Map<number, number>();
+    for (const stat of seasonStats) {
+      if (stat.WorldGolfRank && stat.WorldGolfRank > 0) {
+        rankMap.set(stat.PlayerID, stat.WorldGolfRank);
+      }
+    }
+
+    // Batch update rankings
+    const RANK_BATCH = 200;
+    const entries = Array.from(rankMap.entries());
+    for (let i = 0; i < entries.length; i += RANK_BATCH) {
+      const batch = entries.slice(i, i + RANK_BATCH);
+      // Build a VALUES list for a bulk update using a CTE
+      const valuePairs = batch.map(
+        ([playerId, rank]) => sql`(${playerId}, ${rank})`
+      );
+      await db.execute(sql`
+        UPDATE golfers SET world_ranking = v.rank, updated_at = ${now}
+        FROM (VALUES ${sql.join(valuePairs, sql`, `)}) AS v(ext_id, rank)
+        WHERE golfers.external_player_id = v.ext_id
+      `);
+      rankingsUpdated += batch.length;
+    }
+  } catch (err) {
+    console.error("[SyncSchedule] Failed to fetch PlayerSeasonStats for rankings:", err);
   }
 
   return {
     season: seasonId,
     tournamentsCount: apiTournaments.length,
     playersCount: apiPlayers.length,
+    rankingsUpdated,
   };
 }

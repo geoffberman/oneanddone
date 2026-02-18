@@ -46,6 +46,82 @@ interface PickSelectionClientProps {
   isLocked: boolean;
 }
 
+function GolferRow({
+  golfer,
+  primaryId,
+  alternateId,
+  isLocked,
+  onSelect,
+}: {
+  golfer: FieldEntry;
+  primaryId: number | null;
+  alternateId: number | null;
+  isLocked: boolean;
+  onSelect: (id: number) => void;
+}) {
+  const isPrimary = golfer.golferId === primaryId;
+  const isAlternate = golfer.golferId === alternateId;
+  const isDisabled = golfer.isWithdrawn || golfer.isUsed || isLocked;
+
+  return (
+    <button
+      onClick={() => !isDisabled && onSelect(golfer.golferId)}
+      disabled={isDisabled}
+      className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${
+        isPrimary
+          ? "bg-green-50 ring-1 ring-green-300"
+          : isAlternate
+            ? "bg-blue-50 ring-1 ring-blue-300"
+            : isDisabled
+              ? "cursor-not-allowed opacity-50"
+              : "hover:bg-neutral-50"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        {golfer.worldRanking && (
+          <span className="w-8 text-right text-xs font-medium text-neutral-400">
+            #{golfer.worldRanking}
+          </span>
+        )}
+        <div>
+          <span className="text-sm font-medium">
+            {golfer.firstName} {golfer.lastName}
+          </span>
+          {golfer.country && (
+            <span className="ml-2 text-xs text-neutral-400">
+              {golfer.country}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {golfer.isUsed && (
+          <Badge variant="secondary" className="text-xs">
+            Already Used
+          </Badge>
+        )}
+        {golfer.isWithdrawn && (
+          <Badge variant="destructive" className="text-xs">
+            WD
+          </Badge>
+        )}
+        {isPrimary && (
+          <Badge variant="success" className="text-xs">
+            <Check className="mr-1 h-3 w-3" />
+            Primary
+          </Badge>
+        )}
+        {isAlternate && (
+          <Badge className="bg-blue-100 text-xs text-blue-800">
+            <Check className="mr-1 h-3 w-3" />
+            Alternate
+          </Badge>
+        )}
+      </div>
+    </button>
+  );
+}
+
 export function PickSelectionClient({
   gameId,
   tournamentId,
@@ -211,73 +287,69 @@ export function PickSelectionClient({
         />
       </div>
 
-      {/* Golfer List */}
-      <div className="space-y-1">
-        {filteredField.map((golfer) => {
-          const isPrimary = golfer.golferId === primaryId;
-          const isAlternate = golfer.golferId === alternateId;
-          const isDisabled =
-            golfer.isWithdrawn || golfer.isUsed || isLocked;
+      {/* Golfer List — grouped by tier */}
+      <div className="space-y-4">
+        {(() => {
+          const tiers = [
+            { label: "Top 20", min: 1, max: 20 },
+            { label: "Ranked 21–50", min: 21, max: 50 },
+            { label: "Ranked 51–100", min: 51, max: 100 },
+            { label: "Ranked 100+", min: 101, max: 9998 },
+            { label: "Unranked", min: 9999, max: 9999 },
+          ];
 
-          return (
-            <button
-              key={golfer.golferId}
-              onClick={() => !isDisabled && selectGolfer(golfer.golferId)}
-              disabled={isDisabled}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${
-                isPrimary
-                  ? "bg-green-50 ring-1 ring-green-300"
-                  : isAlternate
-                    ? "bg-blue-50 ring-1 ring-blue-300"
-                    : isDisabled
-                      ? "cursor-not-allowed opacity-50"
-                      : "hover:bg-neutral-50"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                {golfer.worldRanking && (
-                  <span className="w-8 text-right text-xs font-medium text-neutral-400">
-                    #{golfer.worldRanking}
+          const hasAnyRanking = filteredField.some((g) => g.worldRanking);
+
+          // If no rankings data, show flat list
+          if (!hasAnyRanking) {
+            return (
+              <div className="space-y-1">
+                {filteredField.map((golfer) => (
+                  <GolferRow
+                    key={golfer.golferId}
+                    golfer={golfer}
+                    primaryId={primaryId}
+                    alternateId={alternateId}
+                    isLocked={isLocked}
+                    onSelect={selectGolfer}
+                  />
+                ))}
+              </div>
+            );
+          }
+
+          return tiers.map((tier) => {
+            const golfers = filteredField.filter((g) => {
+              const rank = g.worldRanking ?? 9999;
+              return rank >= tier.min && rank <= tier.max;
+            });
+            if (golfers.length === 0) return null;
+            return (
+              <div key={tier.label}>
+                <div className="mb-1 flex items-center gap-2 px-1">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    {tier.label}
+                  </h3>
+                  <span className="text-xs text-neutral-400">
+                    ({golfers.length})
                   </span>
-                )}
-                <div>
-                  <span className="text-sm font-medium">
-                    {golfer.firstName} {golfer.lastName}
-                  </span>
-                  {golfer.country && (
-                    <span className="ml-2 text-xs text-neutral-400">
-                      {golfer.country}
-                    </span>
-                  )}
+                </div>
+                <div className="space-y-1">
+                  {golfers.map((golfer) => (
+                    <GolferRow
+                      key={golfer.golferId}
+                      golfer={golfer}
+                      primaryId={primaryId}
+                      alternateId={alternateId}
+                      isLocked={isLocked}
+                      onSelect={selectGolfer}
+                    />
+                  ))}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {golfer.isUsed && (
-                  <Badge variant="secondary" className="text-xs">
-                    Already Used
-                  </Badge>
-                )}
-                {golfer.isWithdrawn && (
-                  <Badge variant="destructive" className="text-xs">
-                    WD
-                  </Badge>
-                )}
-                {isPrimary && (
-                  <Badge variant="success" className="text-xs">
-                    <Check className="mr-1 h-3 w-3" />
-                    Primary
-                  </Badge>
-                )}
-                {isAlternate && (
-                  <Badge className="bg-blue-100 text-xs text-blue-800">
-                    <Check className="mr-1 h-3 w-3" />
-                    Alternate
-                  </Badge>
-                )}
-              </div>
-            </button>
-          );
-        })}
+            );
+          });
+        })()}
 
         {filteredField.length === 0 && (
           <div className="py-8 text-center text-sm text-neutral-500">
