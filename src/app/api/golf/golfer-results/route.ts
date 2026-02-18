@@ -1,42 +1,81 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
-import { tournamentResults, tournaments } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
+import {
+  fetchCurrentSeason,
+  fetchTournamentsBySeason,
+  fetchLeaderboard,
+} from "@/lib/sportsdata/client";
+
+interface GolferYearResult {
+  year: number;
+  position: number;
+  totalScoreToPar: number;
+  earnings: number;
+  madeCut: boolean;
+}
+
+const getGolferTournamentHistory = unstable_cache(
+  async (
+    tournamentName: string,
+    firstName: string,
+    lastName: string
+  ): Promise<GolferYearResult[]> => {
+    const currentSeason = await fetchCurrentSeason();
+    const currentYear = currentSeason.Season;
+    const results: GolferYearResult[] = [];
+
+    for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
+      try {
+        const tournaments = await fetchTournamentsBySeason(year);
+        const match = tournaments.find(
+          (t) => t.Name.toLowerCase() === tournamentName.toLowerCase()
+        );
+        if (!match) continue;
+
+        const leaderboard = await fetchLeaderboard(match.TournamentID);
+        const player = leaderboard.Players.find(
+          (p) =>
+            p.FirstName.toLowerCase() === firstName.toLowerCase() &&
+            p.LastName.toLowerCase() === lastName.toLowerCase()
+        );
+        if (!player) continue;
+
+        results.push({
+          year,
+          position: player.Rank,
+          totalScoreToPar: player.TotalScore,
+          earnings: player.Earnings,
+          madeCut: player.MadeCut === 1,
+        });
+      } catch {
+        // Skip years where API call fails
+      }
+    }
+
+    return results;
+  },
+  ["golfer-tournament-history"],
+  { revalidate: 86400 }
+);
 
 export async function GET(request: NextRequest) {
-  const golferIdStr = request.nextUrl.searchParams.get("golferId");
-  if (!golferIdStr) {
-    return NextResponse.json(
-      { error: "golferId is required" },
-      { status: 400 }
-    );
-  }
+  const tournamentName = request.nextUrl.searchParams.get("tournamentName");
+  const firstName = request.nextUrl.searchParams.get("firstName");
+  const lastName = request.nextUrl.searchParams.get("lastName");
 
-  const golferId = parseInt(golferIdStr);
-  if (isNaN(golferId)) {
+  if (!tournamentName || !firstName || !lastName) {
     return NextResponse.json(
-      { error: "golferId must be a number" },
+      { error: "tournamentName, firstName, and lastName are required" },
       { status: 400 }
     );
   }
 
   try {
-    const results = await db
-      .select({
-        tournamentName: tournaments.name,
-        startDate: tournaments.startDate,
-        position: tournamentResults.position,
-        totalScoreToPar: tournamentResults.totalScoreToPar,
-        earnings: tournamentResults.earnings,
-        madeCut: tournamentResults.madeCut,
-        isWithdrawn: tournamentResults.isWithdrawn,
-      })
-      .from(tournamentResults)
-      .innerJoin(tournaments, eq(tournamentResults.tournamentId, tournaments.id))
-      .where(eq(tournamentResults.golferId, golferId))
-      .orderBy(desc(tournaments.startDate))
-      .limit(15);
-
+    const results = await getGolferTournamentHistory(
+      tournamentName,
+      firstName,
+      lastName
+    );
     return NextResponse.json({ results });
   } catch {
     return NextResponse.json(
