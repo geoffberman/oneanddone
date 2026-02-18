@@ -93,23 +93,48 @@ export async function syncSchedule() {
 
   // Fetch world rankings from PlayerSeasonStats endpoint (separate from Players)
   let rankingsUpdated = 0;
+  let rankingsError: string | null = null;
+  let rankingsDiag: Record<string, unknown> = {};
   try {
     const seasonStats = await fetchPlayerSeasonStats(currentSeason.SeasonID);
+    // Inspect the actual shape of the first entry for debugging
+    const sample = seasonStats.length > 0 ? seasonStats[0] : null;
+    const sampleKeys = sample ? Object.keys(sample) : [];
+
+    // Try to find the ranking field — API might use different casing
+    const rawFirst = sample as Record<string, unknown> | null;
+    const rankField = rawFirst
+      ? sampleKeys.find((k) => k.toLowerCase().includes("worldgolfrank") && !k.toLowerCase().includes("lastweek"))
+      : null;
+
+    rankingsDiag = {
+      statsCount: seasonStats.length,
+      sampleKeys: sampleKeys.slice(0, 20),
+      rankField: rankField || "NOT_FOUND",
+      samplePlayerID: rawFirst?.PlayerID ?? rawFirst?.playerId ?? "?",
+      sampleRank: rankField && rawFirst ? rawFirst[rankField] : null,
+    };
+
     const rankMap = new Map<number, number>();
     for (const stat of seasonStats) {
-      if (stat.WorldGolfRank && stat.WorldGolfRank > 0) {
-        rankMap.set(stat.PlayerID, stat.WorldGolfRank);
+      // Use the discovered field name if available, otherwise try WorldGolfRank
+      const raw = stat as unknown as Record<string, unknown>;
+      const rank = rankField ? (raw[rankField] as number | null) : stat.WorldGolfRank;
+      const playerId = (raw.PlayerID ?? raw.playerId) as number;
+      if (rank && rank > 0 && playerId) {
+        rankMap.set(playerId, rank);
       }
     }
+
+    rankingsDiag.playersWithRank = rankMap.size;
 
     // Batch update rankings
     const RANK_BATCH = 200;
     const entries = Array.from(rankMap.entries());
     for (let i = 0; i < entries.length; i += RANK_BATCH) {
       const batch = entries.slice(i, i + RANK_BATCH);
-      // Build a VALUES list for a bulk update using a CTE
       const valuePairs = batch.map(
-        ([playerId, rank]) => sql`(${playerId}, ${rank})`
+        ([playerId, rank]) => sql`(${playerId}::integer, ${rank}::integer)`
       );
       await db.execute(sql`
         UPDATE golfers SET world_ranking = v.rank, updated_at = ${now}
@@ -119,6 +144,7 @@ export async function syncSchedule() {
       rankingsUpdated += batch.length;
     }
   } catch (err) {
+    rankingsError = err instanceof Error ? err.message : String(err);
     console.error("[SyncSchedule] Failed to fetch PlayerSeasonStats for rankings:", err);
   }
 
@@ -127,5 +153,7 @@ export async function syncSchedule() {
     tournamentsCount: apiTournaments.length,
     playersCount: apiPlayers.length,
     rankingsUpdated,
+    rankingsDiag,
+    ...(rankingsError ? { rankingsError } : {}),
   };
 }
