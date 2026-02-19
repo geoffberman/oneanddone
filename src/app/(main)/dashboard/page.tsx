@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Trophy, Calendar, Clock, Check } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDeadline } from "@/lib/utils";
 import { AccessCodeForm } from "./access-code-form";
 
 export default async function DashboardPage() {
@@ -68,7 +68,7 @@ export default async function DashboardPage() {
                       {pickDeadline && (
                         <div className="flex items-center gap-1.5">
                           <Clock className="h-3.5 w-3.5 text-amber-600" />
-                          <span>Picks lock {formatDate(pickDeadline)}</span>
+                          <span>Picks lock {formatDeadline(pickDeadline)}</span>
                         </div>
                       )}
                       <div className="flex items-start gap-1.5 pt-1">

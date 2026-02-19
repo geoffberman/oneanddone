@@ -19,6 +19,57 @@ export interface LeaderboardEntry {
   totalEarnings: string;
   pickCount: number;
   rank: number;
+  currentPickName?: string | null;  // set only after picks are locked
+  currentPickIsAlternate?: boolean;
+}
+
+// Returns each user's locked-in golfer for a specific tournament.
+// Uses activeGolferId when set (resolve-picks has run), otherwise primaryGolferId.
+export async function getCurrentTournamentPickNames(
+  gameId: number,
+  tournamentId: number
+): Promise<Map<string, { name: string; isAlternate: boolean }>> {
+  const rows = await db
+    .select({
+      userId: picks.userId,
+      primaryGolferId: picks.primaryGolferId,
+      activeGolferId: picks.activeGolferId,
+      alternateActivated: picks.alternateActivated,
+    })
+    .from(picks)
+    .where(and(eq(picks.gameId, gameId), eq(picks.tournamentId, tournamentId)));
+
+  if (rows.length === 0) return new Map();
+
+  const golferIds = [
+    ...new Set(
+      rows.flatMap((r) =>
+        [r.primaryGolferId, r.activeGolferId].filter((id): id is number => id !== null)
+      )
+    ),
+  ];
+
+  const golferRows = await db
+    .select({ id: golfers.id, firstName: golfers.firstName, lastName: golfers.lastName })
+    .from(golfers)
+    .where(inArray(golfers.id, golferIds));
+
+  const golferMap = new Map(
+    golferRows.map((g) => [g.id, `${g.firstName} ${g.lastName}`])
+  );
+
+  const result = new Map<string, { name: string; isAlternate: boolean }>();
+  for (const row of rows) {
+    const displayId = row.activeGolferId ?? row.primaryGolferId;
+    const name = golferMap.get(displayId) ?? null;
+    if (name) {
+      result.set(row.userId, {
+        name,
+        isAlternate: row.alternateActivated,
+      });
+    }
+  }
+  return result;
 }
 
 export async function getSeasonLeaderboard(

@@ -18,6 +18,8 @@ interface LeaderboardEntry {
   totalEarnings: string;
   pickCount: number;
   rank: number;
+  currentPickName?: string | null;
+  currentPickIsAlternate?: boolean;
 }
 
 interface BoardOption {
@@ -30,12 +32,14 @@ interface Props {
   options: BoardOption[];
   currentUserId: string;
   defaultBoard?: string;
+  isLocked: boolean;
 }
 
 export function LeaderboardClient({
   options,
   currentUserId,
   defaultBoard,
+  isLocked,
 }: Props) {
   const [selected, setSelected] = useState(defaultBoard || options[0]?.id || "");
 
@@ -108,9 +112,18 @@ export function LeaderboardClient({
                             </span>
                           )}
                         </p>
-                        <p className="text-xs text-neutral-500">
-                          {entry.pickCount} pick{entry.pickCount !== 1 ? "s" : ""}
-                        </p>
+                        {isLocked && entry.currentPickName ? (
+                          <p className="text-xs text-green-700 font-medium">
+                            {entry.currentPickName}
+                            {entry.currentPickIsAlternate && (
+                              <span className="ml-1 font-normal text-neutral-400">(alt)</span>
+                            )}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-neutral-500">
+                            {entry.pickCount} pick{entry.pickCount !== 1 ? "s" : ""}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <span className="text-base font-bold text-green-700">
