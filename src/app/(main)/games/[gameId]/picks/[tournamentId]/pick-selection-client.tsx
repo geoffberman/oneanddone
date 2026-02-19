@@ -179,8 +179,7 @@ export function PickSelectionClient({
     setInfoLoading(true);
     const params = new URLSearchParams({
       tournamentName,
-      firstName: golfer.firstName,
-      lastName: golfer.lastName,
+      golferId: String(golfer.golferId),
     });
     fetch(`/api/golf/golfer-results?${params}`)
       .then((res) => (res.ok ? res.json() : { results: [] }))

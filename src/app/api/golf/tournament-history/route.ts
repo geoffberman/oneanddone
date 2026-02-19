@@ -6,6 +6,8 @@ import {
 } from "@/lib/sportsdata/client";
 import { matchesTournamentName } from "@/lib/sportsdata/tournament-match";
 
+export const maxDuration = 60;
+
 interface YearResult {
   year: number;
   results: {
@@ -20,6 +22,15 @@ interface YearResult {
 // Simple in-memory cache (key → { data, ts })
 const cache = new Map<string, { data: YearResult[]; ts: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+function getPlayerName(p: Record<string, unknown>): { first: string; last: string } {
+  if (p.FirstName && p.LastName) return { first: String(p.FirstName), last: String(p.LastName) };
+  if (p.Name) {
+    const parts = String(p.Name).split(" ");
+    return { first: parts[0] || "?", last: parts.slice(1).join(" ") || "?" };
+  }
+  return { first: "?", last: "?" };
+}
 
 async function getTournamentHistory(name: string): Promise<YearResult[]> {
   const cacheKey = `history:${name}`;
@@ -38,29 +49,26 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
       const match = tournaments.find((t) =>
         matchesTournamentName(t.Name, name)
       );
-      if (!match) {
-        console.log(`[TournamentHistory] No match for "${name}" in ${year}`);
-        continue;
-      }
+      if (!match) continue;
 
       const leaderboard = await fetchLeaderboard(match.TournamentID);
       const players = leaderboard.Players ?? [];
-      if (players.length === 0) {
-        console.log(`[TournamentHistory] No players in leaderboard for "${match.Name}" (${year}, id=${match.TournamentID})`);
-        continue;
-      }
+      if (players.length === 0) continue;
 
       const top10 = players
-        .filter((p) => p.Rank > 0 && p.MadeCut === 1)
+        .filter((p) => p.Rank > 0 && (p.MadeCut == null || p.MadeCut >= 0.5))
         .sort((a, b) => a.Rank - b.Rank)
         .slice(0, 10)
-        .map((p) => ({
-          position: p.Rank,
-          firstName: p.FirstName,
-          lastName: p.LastName,
-          totalScoreToPar: p.TotalScore,
-          earnings: p.Earnings,
-        }));
+        .map((p) => {
+          const { first, last } = getPlayerName(p as unknown as Record<string, unknown>);
+          return {
+            position: Math.round(p.Rank),
+            firstName: first,
+            lastName: last,
+            totalScoreToPar: Math.round(p.TotalScore),
+            earnings: p.Earnings,
+          };
+        });
 
       if (top10.length > 0) {
         years.push({ year, results: top10 });
@@ -70,7 +78,6 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
     }
   }
 
-  // Only cache if we got results — don't cache empty failures
   if (years.length > 0) {
     cache.set(cacheKey, { data: years, ts: Date.now() });
   }
