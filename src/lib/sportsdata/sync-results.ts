@@ -58,17 +58,33 @@ export async function syncResults() {
         // Insert any golfers not yet in the DB (handles tournaments starting before sync-field runs)
         const missingPlayers = players.filter((p) => !golferMap.has(p.PlayerID));
         if (missingPlayers.length > 0) {
-          const golferValues = missingPlayers.map((p) =>
-            sql`(${p.PlayerID}, ${p.FirstName}, ${p.LastName}, ${p.Country ?? null}, ${null}, ${now}, ${now})`
-          );
-          const inserted = await db.execute(sql`
-            INSERT INTO golfers (external_player_id, first_name, last_name, country, photo_url, created_at, updated_at)
-            VALUES ${sql.join(golferValues, sql`, `)}
-            ON CONFLICT (external_player_id) DO NOTHING
-            RETURNING id, external_player_id
-          `);
-          for (const row of inserted.rows) {
-            golferMap.set(row.external_player_id as number, row.id as number);
+          for (const p of missingPlayers) {
+            try {
+              const [inserted] = await db
+                .insert(golfers)
+                .values({
+                  externalPlayerId: p.PlayerID,
+                  firstName: p.FirstName,
+                  lastName: p.LastName,
+                  country: p.Country ?? null,
+                  photoUrl: null,
+                })
+                .onConflictDoNothing({ target: golfers.externalPlayerId })
+                .returning({ id: golfers.id });
+              if (inserted) {
+                golferMap.set(p.PlayerID, inserted.id);
+              } else {
+                // Already exists — re-fetch its id
+                const [existing] = await db
+                  .select({ id: golfers.id })
+                  .from(golfers)
+                  .where(eq(golfers.externalPlayerId, p.PlayerID))
+                  .limit(1);
+                if (existing) golferMap.set(p.PlayerID, existing.id);
+              }
+            } catch (golferErr) {
+              console.error(`Failed to insert golfer ${p.PlayerID}:`, golferErr);
+            }
           }
         }
 
@@ -76,38 +92,32 @@ export async function syncResults() {
         const matchedPlayers = players.filter((p) => golferMap.has(p.PlayerID));
 
         if (matchedPlayers.length > 0) {
-          const resultValues = matchedPlayers.map((p) => {
-            const golferId = golferMap.get(p.PlayerID)!;
-            return sql`(
-              ${tournament.id},
-              ${golferId},
-              ${p.Rank ?? null},
-              ${p.Earnings?.toString() || "0"},
-              ${p.TotalStrokes ?? null},
-              ${p.TotalScore ?? null},
-              ${p.MadeCut === 1},
-              ${p.IsWithdrawn},
-              ${p.Rounds?.length || 0},
-              ${now},
-              ${now}
-            )`;
-          });
+          // Use a transaction: delete old results then insert fresh ones.
+          // This avoids dependency on the unique index existing for ON CONFLICT.
+          await db.transaction(async (tx) => {
+            await tx
+              .delete(tournamentResults)
+              .where(eq(tournamentResults.tournamentId, tournament.id));
 
-          // Bulk upsert — no manual sequence needed, no N+1 queries
-          await db.execute(sql`
-            INSERT INTO tournament_results
-              (tournament_id, golfer_id, position, earnings, total_score, total_score_to_par, made_cut, is_withdrawn, rounds, created_at, updated_at)
-            VALUES ${sql.join(resultValues, sql`, `)}
-            ON CONFLICT (tournament_id, golfer_id) DO UPDATE SET
-              position = EXCLUDED.position,
-              earnings = EXCLUDED.earnings,
-              total_score = EXCLUDED.total_score,
-              total_score_to_par = EXCLUDED.total_score_to_par,
-              made_cut = EXCLUDED.made_cut,
-              is_withdrawn = EXCLUDED.is_withdrawn,
-              rounds = EXCLUDED.rounds,
-              updated_at = EXCLUDED.updated_at
-          `);
+            // Insert in batches of 200 to avoid exceeding parameter limits
+            const BATCH_SIZE = 200;
+            for (let i = 0; i < matchedPlayers.length; i += BATCH_SIZE) {
+              const batch = matchedPlayers.slice(i, i + BATCH_SIZE);
+              await tx.insert(tournamentResults).values(
+                batch.map((p) => ({
+                  tournamentId: tournament.id,
+                  golferId: golferMap.get(p.PlayerID)!,
+                  position: p.Rank ?? null,
+                  earnings: p.Earnings?.toString() || "0",
+                  totalScore: p.TotalStrokes ?? null,
+                  totalScoreToPar: p.TotalScore ?? null,
+                  madeCut: p.MadeCut === 1,
+                  isWithdrawn: p.IsWithdrawn,
+                  rounds: p.Rounds?.length || 0,
+                }))
+              );
+            }
+          });
 
           resultsCount = matchedPlayers.length;
         }
@@ -128,6 +138,11 @@ export async function syncResults() {
         `Failed to sync results for ${tournament.name}:`,
         error
       );
+      results.push({
+        tournament: tournament.name,
+        error: String(error),
+        resultsCount: 0,
+      });
     }
   }
 

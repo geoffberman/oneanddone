@@ -308,6 +308,116 @@ export async function POST(req: Request) {
       return NextResponse.json({ migrations: results });
     }
 
+    if (action === "sync-debug") {
+      // Step-by-step sync diagnostic — shows exactly what happens at each stage
+      const diag: Record<string, unknown> = {};
+
+      // 1. Check tournament_results table and indexes
+      try {
+        const idxCheck = await db.execute(sql`
+          SELECT indexname, indexdef FROM pg_indexes
+          WHERE tablename = 'tournament_results'
+        `);
+        diag.tournamentResultsIndexes = idxCheck.rows;
+      } catch (e) {
+        diag.indexCheckError = String(e);
+      }
+
+      // 2. Count existing tournament_results
+      try {
+        const countResult = await db.execute(sql`SELECT COUNT(*) as cnt FROM tournament_results`);
+        diag.existingResultsCount = countResult.rows[0];
+      } catch (e) {
+        diag.countError = String(e);
+      }
+
+      // 3. Find active tournaments (same query as syncResults)
+      try {
+        const active = await db.execute(sql`
+          SELECT id, name, external_tournament_id, start_date, is_over, is_in_progress, canceled
+          FROM tournaments
+          WHERE canceled = false AND (is_in_progress = true OR is_over = false)
+        `);
+        diag.activeTournaments = active.rows;
+
+        // 4. Filter to started & not over
+        const now = new Date();
+        const toSync = active.rows.filter(
+          (t: Record<string, unknown>) =>
+            new Date(t.start_date as string) <= now && !(t.is_over as boolean)
+        );
+        diag.tournamentsToSync = toSync;
+
+        if (toSync.length > 0) {
+          const t = toSync[0] as Record<string, unknown>;
+          const extId = t.external_tournament_id as number;
+          diag.testingTournament = { name: t.name, id: t.id, externalId: extId };
+
+          // 5. Fetch leaderboard from API
+          try {
+            const { fetchLeaderboard } = await import("@/lib/sportsdata/client");
+            const lb = await fetchLeaderboard(extId);
+            diag.leaderboardTournament = {
+              IsOver: lb.Tournament.IsOver,
+              IsInProgress: lb.Tournament.IsInProgress,
+            };
+            diag.leaderboardPlayerCount = lb.Players?.length ?? 0;
+
+            // Show first 3 players as sample
+            diag.samplePlayers = (lb.Players || []).slice(0, 3).map((p) => ({
+              PlayerID: p.PlayerID,
+              Name: `${p.FirstName} ${p.LastName}`,
+              Rank: p.Rank,
+              Earnings: p.Earnings,
+              TotalScore: p.TotalScore,
+              TotalStrokes: p.TotalStrokes,
+              MadeCut: p.MadeCut,
+              Rounds: p.Rounds?.length,
+            }));
+
+            // 6. Check golfer match rate
+            if (lb.Players && lb.Players.length > 0) {
+              const playerIds = lb.Players.map((p) => p.PlayerID);
+              const golferCheck = await db.execute(sql`
+                SELECT id, external_player_id FROM golfers
+                WHERE external_player_id = ANY(${playerIds})
+              `);
+              diag.golferMatchCount = golferCheck.rows.length;
+              diag.golferMatchRate = `${golferCheck.rows.length}/${playerIds.length}`;
+
+              // 7. Actually run syncResults and capture the result
+              try {
+                const { syncResults } = await import("@/lib/sportsdata/sync-results");
+                const syncResult = await syncResults();
+                diag.syncResult = syncResult;
+              } catch (syncErr) {
+                diag.syncError = String(syncErr);
+                diag.syncStack = (syncErr as Error).stack?.substring(0, 800);
+              }
+
+              // 8. Count results after sync
+              try {
+                const afterCount = await db.execute(sql`
+                  SELECT COUNT(*) as cnt FROM tournament_results
+                  WHERE tournament_id = ${t.id as number}
+                `);
+                diag.resultsAfterSync = afterCount.rows[0];
+              } catch (e) {
+                diag.resultsAfterSyncError = String(e);
+              }
+            }
+          } catch (apiErr) {
+            diag.leaderboardApiError = String(apiErr);
+            diag.leaderboardApiStack = (apiErr as Error).stack?.substring(0, 500);
+          }
+        }
+      } catch (e) {
+        diag.activeTournamentsError = String(e);
+      }
+
+      return NextResponse.json(diag);
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
     console.error("[Admin Diagnose]", err);
