@@ -4,6 +4,8 @@ import { users } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
+export const maxDuration = 60;
+
 // Temporary diagnostic endpoint — remove after debugging
 // Secured with CRON_SECRET to prevent unauthorized access
 export async function POST(req: Request) {
