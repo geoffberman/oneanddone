@@ -92,6 +92,7 @@ export default async function MembersPage({
               userId: m.userId,
               userName: m.userName,
               userDisplayName: m.userDisplayName,
+              userEmail: m.userEmail,
               userImage: m.userImage,
               role: m.role,
             }))}
