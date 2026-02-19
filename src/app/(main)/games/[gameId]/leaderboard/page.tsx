@@ -77,14 +77,16 @@ export default async function LeaderboardPage({
       getCurrentTournamentPickNames(gameId, currentTournament.id),
       getLiveScoresForGame(gameId, currentTournament.id),
     ]);
+    const isWeeklyId = `weekly-${currentTournament.id}`;
     for (const option of options) {
+      const isWeekly = option.id === isWeeklyId;
       const enriched = (option.entries as LeaderboardEntry[]).map((e) => {
         const live = liveMap.get(e.userId);
         return {
           ...e,
-          // During a live tournament, show current earnings from tournament_results
-          // rather than picks.earnings (which is only updated after the tournament ends)
-          totalEarnings: live?.earnings ?? e.totalEarnings,
+          // Only override earnings for the weekly board — season/sub-game boards
+          // show cumulative totals that shouldn't be replaced by a single tournament
+          totalEarnings: isWeekly ? (live?.earnings ?? e.totalEarnings) : e.totalEarnings,
           currentPickName: pickMap.get(e.userId)?.name ?? null,
           currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
           livePosition: live?.position ?? null,
@@ -97,7 +99,9 @@ export default async function LeaderboardPage({
 
       // During a live tournament, re-sort the weekly leaderboard by live score
       // (earnings stay $0 until the tournament finishes, so they're useless for ranking)
-      if (isInProgress && option.id === `weekly-${currentTournament.id}`) {
+      const hasLiveScores = isInProgress && isWeekly &&
+        enriched.some((e) => e.liveTotalScoreToPar != null);
+      if (hasLiveScores) {
         enriched.sort((a, b) => {
           const aWD = a.liveIsWithdrawn ?? false;
           const bWD = b.liveIsWithdrawn ?? false;

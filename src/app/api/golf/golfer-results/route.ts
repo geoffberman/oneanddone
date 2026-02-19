@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/db";
+import { golfers } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   fetchCurrentSeason,
   fetchTournamentsBySeason,
   fetchLeaderboard,
 } from "@/lib/sportsdata/client";
 import { matchesTournamentName } from "@/lib/sportsdata/tournament-match";
+
+export const maxDuration = 60;
 
 interface GolferYearResult {
   year: number;
@@ -20,10 +25,9 @@ const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 async function getGolferTournamentHistory(
   tournamentName: string,
-  firstName: string,
-  lastName: string
+  externalPlayerId: number
 ): Promise<GolferYearResult[]> {
-  const cacheKey = `golfer:${tournamentName}:${firstName}:${lastName}`;
+  const cacheKey = `golfer:${tournamentName}:${externalPlayerId}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) {
     return cached.data;
@@ -39,38 +43,28 @@ async function getGolferTournamentHistory(
       const match = tournaments.find((t) =>
         matchesTournamentName(t.Name, tournamentName)
       );
-      if (!match) {
-        console.log(`[GolferResults] No match for "${tournamentName}" in ${year}`);
-        continue;
-      }
+      if (!match) continue;
 
       const leaderboard = await fetchLeaderboard(match.TournamentID);
       const players = leaderboard.Players ?? [];
-      if (players.length === 0) {
-        console.log(`[GolferResults] No players in leaderboard for "${match.Name}" (${year}, id=${match.TournamentID})`);
-        continue;
-      }
+      if (players.length === 0) continue;
 
-      const player = players.find(
-        (p) =>
-          p.FirstName.toLowerCase() === firstName.toLowerCase() &&
-          p.LastName.toLowerCase() === lastName.toLowerCase()
-      );
+      // Match by PlayerID — reliable even when FirstName/LastName are missing
+      const player = players.find((p) => p.PlayerID === externalPlayerId);
       if (!player) continue;
 
       results.push({
         year,
-        position: player.Rank,
-        totalScoreToPar: player.TotalScore,
+        position: Math.round(player.Rank),
+        totalScoreToPar: Math.round(player.TotalScore),
         earnings: player.Earnings,
-        madeCut: player.MadeCut === 1,
+        madeCut: player.MadeCut != null ? player.MadeCut >= 0.5 : false,
       });
     } catch (err) {
-      console.error(`[GolferResults] Error fetching ${year} for "${firstName} ${lastName}" at "${tournamentName}":`, err);
+      console.error(`[GolferResults] Error fetching ${year} for player ${externalPlayerId} at "${tournamentName}":`, err);
     }
   }
 
-  // Only cache if we got results
   if (results.length > 0) {
     cache.set(cacheKey, { data: results, ts: Date.now() });
   }
@@ -80,21 +74,35 @@ async function getGolferTournamentHistory(
 
 export async function GET(request: NextRequest) {
   const tournamentName = request.nextUrl.searchParams.get("tournamentName");
-  const firstName = request.nextUrl.searchParams.get("firstName");
-  const lastName = request.nextUrl.searchParams.get("lastName");
+  const golferIdStr = request.nextUrl.searchParams.get("golferId");
 
-  if (!tournamentName || !firstName || !lastName) {
+  if (!tournamentName || !golferIdStr) {
     return NextResponse.json(
-      { error: "tournamentName, firstName, and lastName are required" },
+      { error: "tournamentName and golferId are required" },
       { status: 400 }
     );
   }
 
+  const golferId = parseInt(golferIdStr);
+  if (isNaN(golferId)) {
+    return NextResponse.json({ error: "Invalid golferId" }, { status: 400 });
+  }
+
   try {
+    // Look up external player ID from DB
+    const [golfer] = await db
+      .select({ externalPlayerId: golfers.externalPlayerId })
+      .from(golfers)
+      .where(eq(golfers.id, golferId))
+      .limit(1);
+
+    if (!golfer) {
+      return NextResponse.json({ results: [] });
+    }
+
     const results = await getGolferTournamentHistory(
       tournamentName,
-      firstName,
-      lastName
+      golfer.externalPlayerId
     );
     return NextResponse.json({ results });
   } catch {
