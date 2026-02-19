@@ -5,6 +5,7 @@ import {
   fetchTournamentsBySeason,
   fetchLeaderboard,
 } from "@/lib/sportsdata/client";
+import { matchesTournamentName } from "@/lib/sportsdata/tournament-match";
 
 interface YearResult {
   year: number;
@@ -26,8 +27,8 @@ const getTournamentHistory = unstable_cache(
     for (const year of [currentYear - 1, currentYear - 2, currentYear - 3]) {
       try {
         const tournaments = await fetchTournamentsBySeason(year);
-        const match = tournaments.find(
-          (t) => t.Name.toLowerCase() === name.toLowerCase()
+        const match = tournaments.find((t) =>
+          matchesTournamentName(t.Name, name)
         );
         if (!match) continue;
 
@@ -55,7 +56,7 @@ const getTournamentHistory = unstable_cache(
 
     return years;
   },
-  ["tournament-history"],
+  ["tournament-history-v2"],
   { revalidate: 86400 }
 );
 

@@ -5,6 +5,7 @@ import {
   fetchTournamentsBySeason,
   fetchLeaderboard,
 } from "@/lib/sportsdata/client";
+import { matchesTournamentName } from "@/lib/sportsdata/tournament-match";
 
 interface GolferYearResult {
   year: number;
@@ -27,8 +28,8 @@ const getGolferTournamentHistory = unstable_cache(
     for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
       try {
         const tournaments = await fetchTournamentsBySeason(year);
-        const match = tournaments.find(
-          (t) => t.Name.toLowerCase() === tournamentName.toLowerCase()
+        const match = tournaments.find((t) =>
+          matchesTournamentName(t.Name, tournamentName)
         );
         if (!match) continue;
 
@@ -54,7 +55,7 @@ const getGolferTournamentHistory = unstable_cache(
 
     return results;
   },
-  ["golfer-tournament-history"],
+  ["golfer-tournament-history-v2"],
   { revalidate: 86400 }
 );
 
