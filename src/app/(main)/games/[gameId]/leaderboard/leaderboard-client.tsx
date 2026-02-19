@@ -20,6 +20,11 @@ interface LeaderboardEntry {
   rank: number;
   currentPickName?: string | null;
   currentPickIsAlternate?: boolean;
+  livePosition?: number | null;
+  liveTotalScoreToPar?: number | null;
+  liveMadeCut?: boolean | null;
+  liveIsWithdrawn?: boolean | null;
+  liveRounds?: number | null;
 }
 
 interface BoardOption {
@@ -33,6 +38,32 @@ interface Props {
   currentUserId: string;
   defaultBoard?: string;
   isLocked: boolean;
+  isInProgress: boolean;
+}
+
+function formatScoreToPar(score: number | null | undefined): string {
+  if (score == null) return "";
+  if (score === 0) return "E";
+  return score > 0 ? `+${score}` : `${score}`;
+}
+
+function formatLiveScore(entry: LeaderboardEntry): string | null {
+  if (entry.liveIsWithdrawn) return "WD";
+  if (entry.liveMadeCut === false) return "MC";
+  if (entry.livePosition != null && entry.livePosition > 0) {
+    const score = formatScoreToPar(entry.liveTotalScoreToPar);
+    return score ? `T${entry.livePosition} · ${score}` : `T${entry.livePosition}`;
+  }
+  return null;
+}
+
+function liveScoreColor(entry: LeaderboardEntry): string {
+  if (entry.liveIsWithdrawn || entry.liveMadeCut === false) return "text-neutral-400";
+  const score = entry.liveTotalScoreToPar;
+  if (score == null) return "text-neutral-500";
+  if (score < 0) return "text-green-700";
+  if (score > 0) return "text-red-600";
+  return "text-neutral-600";
 }
 
 export function LeaderboardClient({
@@ -40,6 +71,7 @@ export function LeaderboardClient({
   currentUserId,
   defaultBoard,
   isLocked,
+  isInProgress,
 }: Props) {
   const [selected, setSelected] = useState(defaultBoard || options[0]?.id || "");
 
@@ -67,6 +99,12 @@ export function LeaderboardClient({
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-green-600" />
             <CardTitle>Standings</CardTitle>
+            {isInProgress && (
+              <span className="ml-auto flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                LIVE
+              </span>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -78,6 +116,7 @@ export function LeaderboardClient({
             <div className="space-y-1">
               {entries.map((entry) => {
                 const isCurrentUser = entry.userId === currentUserId;
+                const liveScore = isLocked ? formatLiveScore(entry) : null;
                 return (
                   <div
                     key={entry.userId}
@@ -113,10 +152,15 @@ export function LeaderboardClient({
                           )}
                         </p>
                         {isLocked && entry.currentPickName ? (
-                          <p className="text-xs text-green-700 font-medium">
+                          <p className="text-xs text-neutral-600">
                             {entry.currentPickName}
                             {entry.currentPickIsAlternate && (
-                              <span className="ml-1 font-normal text-neutral-400">(alt)</span>
+                              <span className="ml-1 text-neutral-400">(alt)</span>
+                            )}
+                            {liveScore && (
+                              <span className={`ml-1.5 font-semibold ${liveScoreColor(entry)}`}>
+                                · {liveScore}
+                              </span>
                             )}
                           </p>
                         ) : (

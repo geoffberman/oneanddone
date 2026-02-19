@@ -29,7 +29,7 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
   }
 
   const currentSeason = await fetchCurrentSeason();
-  const currentYear = currentSeason.Season;
+  const currentYear = currentSeason.SeasonID;
   const years: YearResult[] = [];
 
   for (const year of [currentYear - 1, currentYear - 2, currentYear - 3]) {
