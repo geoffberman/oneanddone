@@ -23,3 +23,21 @@ export function formatDate(date: Date | string): string {
     year: "numeric",
   });
 }
+
+// Format a picks deadline with time and Pacific timezone, e.g. "February 19 at 6:00 AM PST"
+export function formatDeadline(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const datePart = d.toLocaleDateString("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "long",
+    day: "numeric",
+  });
+  const timePart = d.toLocaleTimeString("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  });
+  return `${datePart} at ${timePart}`;
+}

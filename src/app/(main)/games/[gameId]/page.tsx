@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDeadline } from "@/lib/utils";
 import {
   Trophy,
   Calendar,
@@ -22,10 +22,12 @@ import {
   UserCog,
   Settings,
   Megaphone,
+  Mail,
   Users,
   ChevronRight,
 } from "lucide-react";
 import { AnnouncementForm } from "./announcement-form";
+import { EmailMembersForm } from "./email-members-form";
 
 export default async function GameHomePage({
   params,
@@ -113,7 +115,7 @@ export default async function GameHomePage({
             {pickDeadline && (
               <div className="flex items-center gap-1.5 text-sm text-neutral-500">
                 <Clock className="h-3.5 w-3.5 text-amber-600" />
-                <span>Picks lock {formatDate(pickDeadline)}</span>
+                <span>Picks deadline {formatDeadline(pickDeadline)}</span>
               </div>
             )}
             {currentPick ? (
@@ -192,21 +194,39 @@ export default async function GameHomePage({
         </Link>
       </div>
 
-      {/* Manager: Send Announcement */}
+      {/* Manager: Send Announcement + Email Members */}
       {isManager && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Megaphone className="h-4 w-4 text-neutral-500" />
-              <CardTitle className="text-base">
-                Message Members
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <AnnouncementForm gameId={gameId} />
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Megaphone className="h-4 w-4 text-neutral-500" />
+                <CardTitle className="text-base">Post Announcement</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <AnnouncementForm gameId={gameId} />
+              <p className="mt-2 text-xs text-neutral-500">
+                Visible to all members on this page.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-neutral-500" />
+                <CardTitle className="text-base">Email Members</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <EmailMembersForm gameId={gameId} />
+              <p className="mt-2 text-xs text-neutral-500">
+                Sends an email directly to every member of this league.
+              </p>
+            </CardContent>
+          </Card>
+        </>
       )}
 
       {/* Recent Announcements */}

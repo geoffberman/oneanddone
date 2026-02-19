@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/resolve-picks",
       "schedule": "30 7,8,9,10 * * 4"
+    },
+    {
+      "path": "/api/cron/send-reminders",
+      "schedule": "0 13 * * *"
     }
   ]
 }
