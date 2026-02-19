@@ -6,6 +6,8 @@ import {
   getSeasonLeaderboard,
   getSubGameLeaderboard,
   getWeeklyLeaderboard,
+  getCurrentTournamentPickNames,
+  type LeaderboardEntry,
 } from "@/lib/queries/leaderboard";
 import { getSubGames } from "@/lib/actions/sub-games";
 import { LeaderboardClient } from "./leaderboard-client";
@@ -62,6 +64,23 @@ export default async function LeaderboardPage({
     entries: results[i],
   }));
 
+  // After picks lock, attach each member's current tournament pick to every board
+  const lockTime = currentTournament
+    ? currentTournament.firstTeeTime || currentTournament.startDate
+    : null;
+  const isLocked = lockTime ? new Date() >= new Date(lockTime) : false;
+
+  if (isLocked && currentTournament) {
+    const pickMap = await getCurrentTournamentPickNames(gameId, currentTournament.id);
+    for (const option of options) {
+      option.entries = (option.entries as LeaderboardEntry[]).map((e) => ({
+        ...e,
+        currentPickName: pickMap.get(e.userId)?.name ?? null,
+        currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
+      }));
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -73,6 +92,7 @@ export default async function LeaderboardPage({
         options={options}
         currentUserId={userId}
         defaultBoard="season"
+        isLocked={isLocked}
       />
     </div>
   );
