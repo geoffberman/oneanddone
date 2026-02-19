@@ -50,6 +50,7 @@ export async function getGameMembers(gameId: number) {
       userId: gameMembers.userId,
       userName: users.name,
       userDisplayName: users.displayName,
+      userEmail: users.email,
       userImage: users.image,
       role: gameMembers.role,
       joinedAt: gameMembers.joinedAt,

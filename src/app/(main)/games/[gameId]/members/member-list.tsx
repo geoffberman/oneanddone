@@ -22,6 +22,7 @@ interface Member {
   userId: string;
   userName: string | null;
   userDisplayName: string | null;
+  userEmail: string | null;
   userImage: string | null;
   role: "manager" | "player";
 }
@@ -336,8 +337,15 @@ export function MemberList({
             <DialogTitle>
               Set Display Name — {nameTarget ? displayName(nameTarget) : "Member"}
             </DialogTitle>
-            <DialogDescription>
-              This name will appear on the leaderboard and member list.
+            <DialogDescription asChild>
+              <div className="space-y-1">
+                {nameTarget?.userEmail && (
+                  <p className="text-sm text-neutral-500">
+                    Email: <span className="font-medium text-neutral-700">{nameTarget.userEmail}</span>
+                  </p>
+                )}
+                <p>This name will appear on the leaderboard and member list.</p>
+              </div>
             </DialogDescription>
           </DialogHeader>
 
