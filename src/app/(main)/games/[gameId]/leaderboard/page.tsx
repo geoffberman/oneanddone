@@ -78,16 +78,22 @@ export default async function LeaderboardPage({
       getLiveScoresForGame(gameId, currentTournament.id),
     ]);
     for (const option of options) {
-      const enriched = (option.entries as LeaderboardEntry[]).map((e) => ({
-        ...e,
-        currentPickName: pickMap.get(e.userId)?.name ?? null,
-        currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
-        livePosition: liveMap.get(e.userId)?.position ?? null,
-        liveTotalScoreToPar: liveMap.get(e.userId)?.totalScoreToPar ?? null,
-        liveMadeCut: liveMap.get(e.userId)?.madeCut ?? null,
-        liveIsWithdrawn: liveMap.get(e.userId)?.isWithdrawn ?? null,
-        liveRounds: liveMap.get(e.userId)?.rounds ?? null,
-      }));
+      const enriched = (option.entries as LeaderboardEntry[]).map((e) => {
+        const live = liveMap.get(e.userId);
+        return {
+          ...e,
+          // During a live tournament, show current earnings from tournament_results
+          // rather than picks.earnings (which is only updated after the tournament ends)
+          totalEarnings: live?.earnings ?? e.totalEarnings,
+          currentPickName: pickMap.get(e.userId)?.name ?? null,
+          currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
+          livePosition: live?.position ?? null,
+          liveTotalScoreToPar: live?.totalScoreToPar ?? null,
+          liveMadeCut: live?.madeCut ?? null,
+          liveIsWithdrawn: live?.isWithdrawn ?? null,
+          liveRounds: live?.rounds ?? null,
+        };
+      });
 
       // During a live tournament, re-sort the weekly leaderboard by live score
       // (earnings stay $0 until the tournament finishes, so they're useless for ranking)

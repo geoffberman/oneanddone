@@ -309,6 +309,7 @@ export async function getLiveScoresForGame(
   madeCut: boolean | null;
   isWithdrawn: boolean | null;
   rounds: number | null;
+  earnings: string | null;
 }>> {
   const gamePicks = await db
     .select({
@@ -333,6 +334,7 @@ export async function getLiveScoresForGame(
       madeCut: tournamentResults.madeCut,
       isWithdrawn: tournamentResults.isWithdrawn,
       rounds: tournamentResults.rounds,
+      earnings: tournamentResults.earnings,
     })
     .from(tournamentResults)
     .where(
