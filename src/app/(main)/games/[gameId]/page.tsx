@@ -54,6 +54,32 @@ export default async function GameHomePage({
     ? await getUserPickWithNames(gameId, currentTournament.id)
     : null;
 
+  // Pre-compute live score display for the pick card
+  let liveScoreStr: string | null = null;
+  let liveScoreColor = "text-neutral-500";
+  if (currentPick && currentTournament?.isInProgress) {
+    const { liveIsWithdrawn, liveMadeCut, livePosition, liveTotalScoreToPar } = currentPick;
+    if (liveIsWithdrawn) {
+      liveScoreStr = "WD";
+      liveScoreColor = "text-neutral-400";
+    } else if (liveMadeCut === false) {
+      liveScoreStr = "MC";
+      liveScoreColor = "text-neutral-400";
+    } else if (livePosition != null && livePosition > 0) {
+      const par =
+        liveTotalScoreToPar == null ? "" :
+        liveTotalScoreToPar === 0 ? "E" :
+        liveTotalScoreToPar > 0 ? `+${liveTotalScoreToPar}` :
+        `${liveTotalScoreToPar}`;
+      liveScoreStr = par ? `T${livePosition} · ${par}` : `T${livePosition}`;
+      liveScoreColor =
+        liveTotalScoreToPar == null ? "text-neutral-500" :
+        liveTotalScoreToPar < 0 ? "text-green-700" :
+        liveTotalScoreToPar > 0 ? "text-red-600" :
+        "text-neutral-600";
+    }
+  }
+
   const isManager = role === "manager";
   const pickDeadline = currentTournament
     ? currentTournament.firstTeeTime || currentTournament.startDate
@@ -133,9 +159,23 @@ export default async function GameHomePage({
                   </Button>
                 </div>
                 <div className="mt-2 space-y-0.5 text-sm text-green-700">
-                  <p>{currentPick.primaryName}</p>
-                  {currentPick.alternateName && (
-                    <p className="text-green-600">
+                  <div className="flex items-center gap-1.5">
+                    <span>
+                      {currentPick.alternateActivated && currentPick.activeName
+                        ? currentPick.activeName
+                        : currentPick.primaryName}
+                    </span>
+                    {currentPick.alternateActivated && (
+                      <span className="text-xs text-green-500">(alt)</span>
+                    )}
+                    {liveScoreStr && (
+                      <span className={`text-xs font-semibold ${liveScoreColor}`}>
+                        · {liveScoreStr}
+                      </span>
+                    )}
+                  </div>
+                  {!currentPick.alternateActivated && currentPick.alternateName && (
+                    <p className="text-xs text-green-600">
                       Alt: {currentPick.alternateName}
                     </p>
                   )}

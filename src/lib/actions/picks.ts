@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { picks, gameMembers, golfers } from "@/db/schema";
+import { picks, gameMembers, golfers, tournamentResults } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { validatePick } from "@/lib/utils/pick-validation";
 import { revalidatePath } from "next/cache";
@@ -100,6 +100,8 @@ export async function getUserPick(gameId: number, tournamentId: number) {
       tournamentId: picks.tournamentId,
       primaryGolferId: picks.primaryGolferId,
       alternateGolferId: picks.alternateGolferId,
+      activeGolferId: picks.activeGolferId,
+      alternateActivated: picks.alternateActivated,
     })
     .from(picks)
     .where(
@@ -153,12 +155,45 @@ export async function getUserPickWithNames(
   const pick = await getUserPick(gameId, tournamentId);
   if (!pick) return null;
 
-  const primaryName = await getGolferName(pick.primaryGolferId);
-  const alternateName = pick.alternateGolferId
-    ? await getGolferName(pick.alternateGolferId)
-    : null;
+  const effectiveGolferId = pick.activeGolferId ?? pick.primaryGolferId;
 
-  return { primaryName, alternateName };
+  const [primaryName, alternateName, activeName] = await Promise.all([
+    getGolferName(pick.primaryGolferId),
+    pick.alternateGolferId ? getGolferName(pick.alternateGolferId) : Promise.resolve(null),
+    pick.activeGolferId && pick.activeGolferId !== pick.primaryGolferId
+      ? getGolferName(pick.activeGolferId)
+      : Promise.resolve(null),
+  ]);
+
+  // Fetch live score for the effective golfer
+  const [liveResult] = await db
+    .select({
+      position: tournamentResults.position,
+      totalScoreToPar: tournamentResults.totalScoreToPar,
+      madeCut: tournamentResults.madeCut,
+      isWithdrawn: tournamentResults.isWithdrawn,
+      rounds: tournamentResults.rounds,
+    })
+    .from(tournamentResults)
+    .where(
+      and(
+        eq(tournamentResults.tournamentId, tournamentId),
+        eq(tournamentResults.golferId, effectiveGolferId)
+      )
+    )
+    .limit(1);
+
+  return {
+    primaryName,
+    alternateName,
+    activeName,
+    alternateActivated: pick.alternateActivated,
+    livePosition: liveResult?.position ?? null,
+    liveTotalScoreToPar: liveResult?.totalScoreToPar ?? null,
+    liveMadeCut: liveResult?.madeCut ?? null,
+    liveIsWithdrawn: liveResult?.isWithdrawn ?? null,
+    liveRounds: liveResult?.rounds ?? null,
+  };
 }
 
 export async function getUserPicksForTournament(

@@ -141,7 +141,7 @@ export default async function LeaderboardPage({
       <LeaderboardClient
         options={options}
         currentUserId={userId}
-        defaultBoard="season"
+        defaultBoard={isInProgress && currentTournament ? `weekly-${currentTournament.id}` : "season"}
         isLocked={isLocked}
         isInProgress={isInProgress}
       />
