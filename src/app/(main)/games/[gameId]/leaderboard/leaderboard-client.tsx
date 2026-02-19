@@ -21,6 +21,7 @@ interface LeaderboardEntry {
   currentPickName?: string | null;
   currentPickIsAlternate?: boolean;
   livePosition?: number | null;
+  liveIsTied?: boolean;
   liveTotalScoreToPar?: number | null;
   liveMadeCut?: boolean | null;
   liveIsWithdrawn?: boolean | null;
@@ -51,10 +52,14 @@ function formatScoreToPar(score: number | null | undefined): string {
 function formatLiveScore(entry: LeaderboardEntry): string | null {
   if (entry.liveIsWithdrawn) return "WD";
 
+  const prefix = entry.liveIsTied ? "T" : "";
+
   // Show position + score first (takes priority over cut status)
   if (entry.livePosition != null && entry.livePosition > 0) {
     const score = formatScoreToPar(entry.liveTotalScoreToPar);
-    return score ? `T${entry.livePosition} · ${score}` : `T${entry.livePosition}`;
+    return score
+      ? `${prefix}${entry.livePosition} · ${score}`
+      : `${prefix}${entry.livePosition}`;
   }
 
   // No active position — player missed the cut; show score if available
