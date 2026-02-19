@@ -18,6 +18,8 @@ export interface LeaderboardEntry {
   userName: string | null;
   userImage: string | null;
   totalEarnings: string;
+  // Cached earnings for just the current tournament (used to subtract before adding live earnings)
+  currentTournamentEarnings?: string;
   pickCount: number;
   rank: number;
   currentPickName?: string | null;  // set only after picks are locked
@@ -80,14 +82,21 @@ export async function getCurrentTournamentPickNames(
 }
 
 export async function getSeasonLeaderboard(
-  gameId: number
+  gameId: number,
+  options?: { currentTournamentId?: number }
 ): Promise<LeaderboardEntry[]> {
+  const tid = options?.currentTournamentId;
   const rows = await db
     .select({
       userId: picks.userId,
       userName: displayName,
       userImage: users.image,
       totalEarnings: sql<string>`COALESCE(SUM(CAST(${picks.earnings} AS NUMERIC)), 0)::text`,
+      // Isolated earnings for just the current tournament, so callers can replace
+      // cached earnings with real-time live earnings without a second query.
+      currentTournamentEarnings: tid != null
+        ? sql<string>`COALESCE(SUM(CASE WHEN ${picks.tournamentId} = ${tid} THEN CAST(${picks.earnings} AS NUMERIC) ELSE 0 END), 0)::text`
+        : sql<string>`'0'::text`,
       pickCount: sql<number>`COUNT(${picks.id})::int`,
     })
     .from(picks)
