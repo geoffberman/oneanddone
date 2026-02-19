@@ -9,6 +9,9 @@ import {
 } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 
+// Prefer displayName over name for leaderboard display
+const displayName = sql<string | null>`COALESCE(${users.displayName}, ${users.name})`;
+
 export interface LeaderboardEntry {
   userId: string;
   userName: string | null;
@@ -24,7 +27,7 @@ export async function getSeasonLeaderboard(
   const rows = await db
     .select({
       userId: picks.userId,
-      userName: users.name,
+      userName: displayName,
       userImage: users.image,
       totalEarnings: sql<string>`COALESCE(SUM(CAST(${picks.earnings} AS NUMERIC)), 0)::text`,
       pickCount: sql<number>`COUNT(${picks.id})::int`,
@@ -32,7 +35,7 @@ export async function getSeasonLeaderboard(
     .from(picks)
     .innerJoin(users, eq(picks.userId, users.id))
     .where(eq(picks.gameId, gameId))
-    .groupBy(picks.userId, users.name, users.image)
+    .groupBy(picks.userId, users.displayName, users.name, users.image)
     .orderBy(
       sql`COALESCE(SUM(CAST(${picks.earnings} AS NUMERIC)), 0) DESC`
     );
@@ -59,7 +62,7 @@ export async function getSubGameLeaderboard(
   const rows = await db
     .select({
       userId: picks.userId,
-      userName: users.name,
+      userName: displayName,
       userImage: users.image,
       totalEarnings: sql<string>`COALESCE(SUM(CAST(${picks.earnings} AS NUMERIC)), 0)::text`,
       pickCount: sql<number>`COUNT(${picks.id})::int`,
@@ -69,7 +72,7 @@ export async function getSubGameLeaderboard(
     .where(
       and(eq(picks.gameId, gameId), inArray(picks.tournamentId, tournamentIds))
     )
-    .groupBy(picks.userId, users.name, users.image)
+    .groupBy(picks.userId, users.displayName, users.name, users.image)
     .orderBy(
       sql`COALESCE(SUM(CAST(${picks.earnings} AS NUMERIC)), 0) DESC`
     );
@@ -87,7 +90,7 @@ export async function getWeeklyLeaderboard(
   const rows = await db
     .select({
       userId: picks.userId,
-      userName: users.name,
+      userName: displayName,
       userImage: users.image,
       totalEarnings: sql<string>`COALESCE(CAST(${picks.earnings} AS NUMERIC), 0)::text`,
       pickCount: sql<number>`1::int`,
