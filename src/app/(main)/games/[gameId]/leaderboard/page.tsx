@@ -97,11 +97,11 @@ export default async function LeaderboardPage({
         };
       });
 
-      // During a live tournament, re-sort the weekly leaderboard by live score
-      // (earnings stay $0 until the tournament finishes, so they're useless for ranking)
-      const hasLiveScores = isInProgress && isWeekly &&
-        enriched.some((e) => e.liveTotalScoreToPar != null);
-      if (hasLiveScores) {
+      // During a live tournament, re-sort the weekly leaderboard by each
+      // golfer's current tournament position (lower = better).
+      const hasLivePositions = isInProgress && isWeekly &&
+        enriched.some((e) => e.livePosition != null && e.livePosition > 0);
+      if (hasLivePositions) {
         enriched.sort((a, b) => {
           const aWD = a.liveIsWithdrawn ?? false;
           const bWD = b.liveIsWithdrawn ?? false;
@@ -112,16 +112,17 @@ export default async function LeaderboardPage({
           if (aWD !== bWD) return aWD ? 1 : -1;
           if (aMC !== bMC) return aMC ? 1 : -1;
 
-          // Active players: sort by score-to-par ascending (null = hasn't teed off → worst)
-          const aScore = a.liveTotalScoreToPar;
-          const bScore = b.liveTotalScoreToPar;
-          if (aScore == null && bScore == null) return 0;
-          if (aScore == null) return 1;
-          if (bScore == null) return -1;
-          return aScore - bScore;
+          // Sort by tournament position ascending (null = no data yet → worst)
+          const aPos = a.livePosition;
+          const bPos = b.livePosition;
+          if (aPos == null && bPos == null) return 0;
+          if (aPos == null) return 1;
+          if (bPos == null) return -1;
+          return aPos - bPos;
         });
 
-        // Re-assign ranks, giving tied scores the same rank
+        // Re-assign ranks — members whose golfers share the same position
+        // get the same rank
         let rank = 1;
         for (let i = 0; i < enriched.length; i++) {
           if (i > 0) {
@@ -130,7 +131,7 @@ export default async function LeaderboardPage({
             const sameTier =
               (prev.liveIsWithdrawn ?? false) === (curr.liveIsWithdrawn ?? false) &&
               (prev.liveMadeCut === false) === (curr.liveMadeCut === false) &&
-              prev.liveTotalScoreToPar === curr.liveTotalScoreToPar;
+              prev.livePosition === curr.livePosition;
             if (!sameTier) rank = i + 1;
           }
           enriched[i] = { ...enriched[i], rank };
