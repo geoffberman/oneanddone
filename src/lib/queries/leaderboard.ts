@@ -175,6 +175,12 @@ export interface PickHistoryEntry {
   alternateActivated: boolean;
   earnings: string;
   isOver: boolean;
+  isInProgress: boolean;
+  // Live score data (populated for in-progress tournaments)
+  livePosition: number | null;
+  liveTotalScoreToPar: number | null;
+  liveMadeCut: boolean | null;
+  liveIsWithdrawn: boolean | null;
 }
 
 export async function getPickHistory(
@@ -201,6 +207,7 @@ export async function getPickHistory(
       alternateActivated: picks.alternateActivated,
       earnings: picks.earnings,
       isOver: tournaments.isOver,
+      isInProgress: tournaments.isInProgress,
     })
     .from(picks)
     .innerJoin(tournaments, eq(picks.tournamentId, tournaments.id))
@@ -230,18 +237,65 @@ export async function getPickHistory(
     return g ? `${g.firstName} ${g.lastName}` : null;
   };
 
-  return rows.map((row) => ({
-    pickId: row.pickId,
-    tournamentId: row.tournamentId,
-    tournamentName: row.tournamentName,
-    tournamentStartDate: row.tournamentStartDate,
-    primaryGolferName: getName(row.primaryGolferId) || "Unknown",
-    alternateGolferName: getName(row.alternateGolferId),
-    activeGolferName: getName(row.activeGolferId),
-    alternateActivated: row.alternateActivated,
-    earnings: row.earnings || "0",
-    isOver: row.isOver,
-  }));
+  // Fetch live scores for in-progress picks
+  const inProgressRows = rows.filter((r) => r.isInProgress);
+  const liveScoreMap = new Map<number, {
+    position: number | null;
+    totalScoreToPar: number | null;
+    madeCut: boolean | null;
+    isWithdrawn: boolean | null;
+  }>();
+
+  if (inProgressRows.length > 0) {
+    const liveResults = await db
+      .select({
+        tournamentId: tournamentResults.tournamentId,
+        golferId: tournamentResults.golferId,
+        position: tournamentResults.position,
+        totalScoreToPar: tournamentResults.totalScoreToPar,
+        madeCut: tournamentResults.madeCut,
+        isWithdrawn: tournamentResults.isWithdrawn,
+      })
+      .from(tournamentResults)
+      .where(
+        and(
+          inArray(tournamentResults.tournamentId, [...new Set(inProgressRows.map((r) => r.tournamentId))]),
+          inArray(
+            tournamentResults.golferId,
+            [...new Set(inProgressRows.map((r) => r.activeGolferId ?? r.primaryGolferId))]
+          )
+        )
+      );
+
+    for (const row of inProgressRows) {
+      const effectiveId = row.activeGolferId ?? row.primaryGolferId;
+      const result = liveResults.find(
+        (r) => r.tournamentId === row.tournamentId && r.golferId === effectiveId
+      );
+      if (result) liveScoreMap.set(row.pickId, result);
+    }
+  }
+
+  return rows.map((row) => {
+    const live = liveScoreMap.get(row.pickId);
+    return {
+      pickId: row.pickId,
+      tournamentId: row.tournamentId,
+      tournamentName: row.tournamentName,
+      tournamentStartDate: row.tournamentStartDate,
+      primaryGolferName: getName(row.primaryGolferId) || "Unknown",
+      alternateGolferName: getName(row.alternateGolferId),
+      activeGolferName: getName(row.activeGolferId),
+      alternateActivated: row.alternateActivated,
+      earnings: row.earnings || "0",
+      isOver: row.isOver,
+      isInProgress: row.isInProgress,
+      livePosition: live?.position ?? null,
+      liveTotalScoreToPar: live?.totalScoreToPar ?? null,
+      liveMadeCut: live?.madeCut ?? null,
+      liveIsWithdrawn: live?.isWithdrawn ?? null,
+    };
+  });
 }
 
 // Returns a map of userId → live tournament result for each member's active golfer.

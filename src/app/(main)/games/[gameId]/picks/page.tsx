@@ -75,6 +75,16 @@ export default async function PickHistoryPage({
                         Alt activated
                       </Badge>
                     )}
+                    {entry.isInProgress && (() => {
+                      if (entry.liveIsWithdrawn) return <span className="text-xs font-semibold text-neutral-400">WD</span>;
+                      if (entry.liveMadeCut === false) return <span className="text-xs font-semibold text-neutral-400">MC</span>;
+                      if (entry.livePosition != null && entry.livePosition > 0) {
+                        const par = entry.liveTotalScoreToPar == null ? "" : entry.liveTotalScoreToPar === 0 ? "E" : entry.liveTotalScoreToPar > 0 ? `+${entry.liveTotalScoreToPar}` : `${entry.liveTotalScoreToPar}`;
+                        const color = entry.liveTotalScoreToPar == null ? "text-neutral-500" : entry.liveTotalScoreToPar < 0 ? "text-green-700" : entry.liveTotalScoreToPar > 0 ? "text-red-600" : "text-neutral-600";
+                        return <span className={`text-xs font-semibold ${color}`}>T{entry.livePosition}{par ? ` · ${par}` : ""}</span>;
+                      }
+                      return null;
+                    })()}
                   </div>
                   {entry.alternateGolferName && (
                     <p className="mt-0.5 text-xs text-neutral-400">
