@@ -26,6 +26,7 @@ export interface LeaderboardEntry {
   currentPickIsAlternate?: boolean;
   // Live tournament data (set when a tournament is in progress or just finished)
   livePosition?: number | null;
+  liveIsTied?: boolean;
   liveTotalScoreToPar?: number | null;
   liveMadeCut?: boolean | null;
   liveIsWithdrawn?: boolean | null;
@@ -308,12 +309,14 @@ export async function getPickHistory(
 }
 
 // Returns a map of userId → live tournament result for each member's active golfer.
-// Used to show live position/score on the leaderboard during (and after) a tournament.
+// Uses SQL RANK() to compute positions from actual scores rather than relying on
+// the API's Rank field which can be stale at tournament start.
 export async function getLiveScoresForGame(
   gameId: number,
   tournamentId: number
 ): Promise<Map<string, {
   position: number | null;
+  isTied: boolean;
   totalScoreToPar: number | null;
   madeCut: boolean | null;
   isWithdrawn: boolean | null;
@@ -335,31 +338,59 @@ export async function getLiveScoresForGame(
     ...new Set(gamePicks.map((p) => p.activeGolferId ?? p.primaryGolferId)),
   ];
 
-  const results = await db
+  // Fetch all tournament results and compute positions from scores using RANK().
+  // This avoids relying on the API's Rank field which may not reflect live scores.
+  const allResults = await db
     .select({
       golferId: tournamentResults.golferId,
-      position: tournamentResults.position,
       totalScoreToPar: tournamentResults.totalScoreToPar,
       madeCut: tournamentResults.madeCut,
       isWithdrawn: tournamentResults.isWithdrawn,
       rounds: tournamentResults.rounds,
       earnings: tournamentResults.earnings,
+      computedPosition: sql<number>`RANK() OVER (
+        ORDER BY
+          CASE WHEN ${tournamentResults.isWithdrawn} THEN 1 ELSE 0 END,
+          ${tournamentResults.totalScoreToPar} ASC NULLS LAST
+      )`,
     })
     .from(tournamentResults)
-    .where(
-      and(
-        eq(tournamentResults.tournamentId, tournamentId),
-        inArray(tournamentResults.golferId, effectiveIds)
-      )
-    );
+    .where(eq(tournamentResults.tournamentId, tournamentId));
 
-  const resultMap = new Map(results.map((r) => [r.golferId, r]));
-  const out = new Map<string, (typeof results)[0]>();
+  // Count how many players share each computed position to determine ties
+  const positionCounts = new Map<number, number>();
+  for (const r of allResults) {
+    if (r.computedPosition != null) {
+      positionCounts.set(r.computedPosition, (positionCounts.get(r.computedPosition) || 0) + 1);
+    }
+  }
+
+  const resultMap = new Map(allResults.map((r) => [r.golferId, r]));
+  const out = new Map<string, {
+    position: number | null;
+    isTied: boolean;
+    totalScoreToPar: number | null;
+    madeCut: boolean | null;
+    isWithdrawn: boolean | null;
+    rounds: number | null;
+    earnings: string | null;
+  }>();
 
   for (const pick of gamePicks) {
     const effectiveId = pick.activeGolferId ?? pick.primaryGolferId;
     const result = resultMap.get(effectiveId);
-    if (result) out.set(pick.userId, result);
+    if (result) {
+      const pos = result.computedPosition;
+      out.set(pick.userId, {
+        position: pos ?? null,
+        isTied: pos != null ? (positionCounts.get(pos) || 1) > 1 : false,
+        totalScoreToPar: result.totalScoreToPar,
+        madeCut: result.madeCut,
+        isWithdrawn: result.isWithdrawn,
+        rounds: result.rounds,
+        earnings: result.earnings,
+      });
+    }
   }
 
   return out;

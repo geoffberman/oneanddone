@@ -106,6 +106,7 @@ export default async function LeaderboardPage({
           currentPickName: pickMap.get(e.userId)?.name ?? null,
           currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
           livePosition: live?.position ?? null,
+          liveIsTied: live?.isTied ?? false,
           liveTotalScoreToPar: live?.totalScoreToPar ?? null,
           liveMadeCut: live?.madeCut ?? null,
           liveIsWithdrawn: live?.isWithdrawn ?? null,
