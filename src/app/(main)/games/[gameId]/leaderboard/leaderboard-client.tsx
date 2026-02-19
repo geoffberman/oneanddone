@@ -30,6 +30,7 @@ interface LeaderboardEntry {
 interface BoardOption {
   id: string;
   label: string;
+  type: "season" | "weekly" | "sub";
   entries: LeaderboardEntry[];
 }
 
@@ -49,11 +50,24 @@ function formatScoreToPar(score: number | null | undefined): string {
 
 function formatLiveScore(entry: LeaderboardEntry): string | null {
   if (entry.liveIsWithdrawn) return "WD";
-  if (entry.liveMadeCut === false) return "MC";
+
+  // Show position + score first (takes priority over cut status)
   if (entry.livePosition != null && entry.livePosition > 0) {
     const score = formatScoreToPar(entry.liveTotalScoreToPar);
     return score ? `T${entry.livePosition} · ${score}` : `T${entry.livePosition}`;
   }
+
+  // No active position — player missed the cut; show score if available
+  if (entry.liveMadeCut === false) {
+    const score = formatScoreToPar(entry.liveTotalScoreToPar);
+    return score ? `MC · ${score}` : "MC";
+  }
+
+  // Early in tournament (no position yet), show score alone if available
+  if (entry.liveTotalScoreToPar != null) {
+    return formatScoreToPar(entry.liveTotalScoreToPar);
+  }
+
   return null;
 }
 
@@ -77,6 +91,7 @@ export function LeaderboardClient({
 
   const current = options.find((o) => o.id === selected);
   const entries = current?.entries || [];
+  const isWeeklyBoard = current?.type === "weekly";
 
   return (
     <div className="space-y-4">
@@ -117,6 +132,7 @@ export function LeaderboardClient({
               {entries.map((entry) => {
                 const isCurrentUser = entry.userId === currentUserId;
                 const liveScore = isLocked ? formatLiveScore(entry) : null;
+                const showWeeklyDetails = isWeeklyBoard && isLocked;
                 return (
                   <div
                     key={entry.userId}
@@ -126,9 +142,10 @@ export function LeaderboardClient({
                         : "bg-neutral-50"
                     }`}
                   >
-                    <div className="flex items-center gap-3">
+                    {/* Left: rank, avatar, name, golfer */}
+                    <div className="flex items-center gap-3 min-w-0">
                       <span
-                        className={`w-8 text-center text-lg font-bold ${
+                        className={`w-8 shrink-0 text-center text-lg font-bold ${
                           entry.rank <= 3
                             ? "text-green-600"
                             : "text-neutral-400"
@@ -136,14 +153,14 @@ export function LeaderboardClient({
                       >
                         {entry.rank}
                       </span>
-                      <Avatar className="h-8 w-8">
+                      <Avatar className="h-8 w-8 shrink-0">
                         <AvatarImage src={entry.userImage || undefined} />
                         <AvatarFallback className="text-xs">
                           {entry.userName?.charAt(0)?.toUpperCase() || "?"}
                         </AvatarFallback>
                       </Avatar>
-                      <div>
-                        <p className="text-sm font-medium">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
                           {entry.userName}
                           {isCurrentUser && (
                             <span className="ml-1 text-xs text-green-600">
@@ -152,12 +169,13 @@ export function LeaderboardClient({
                           )}
                         </p>
                         {isLocked && entry.currentPickName ? (
-                          <p className="text-xs text-neutral-600">
+                          <p className="text-xs text-neutral-500 truncate">
                             {entry.currentPickName}
                             {entry.currentPickIsAlternate && (
                               <span className="ml-1 text-neutral-400">(alt)</span>
                             )}
-                            {liveScore && (
+                            {/* On non-weekly boards, show score inline with golfer name */}
+                            {!isWeeklyBoard && liveScore && (
                               <span className={`ml-1.5 font-semibold ${liveScoreColor(entry)}`}>
                                 · {liveScore}
                               </span>
@@ -170,9 +188,26 @@ export function LeaderboardClient({
                         )}
                       </div>
                     </div>
-                    <span className="text-base font-bold text-green-700">
-                      {formatCurrency(entry.totalEarnings)}
-                    </span>
+
+                    {/* Right: for weekly board show score + earnings stacked; otherwise just earnings */}
+                    {showWeeklyDetails ? (
+                      <div className="text-right shrink-0 ml-3">
+                        {liveScore ? (
+                          <p className={`text-sm font-semibold ${liveScoreColor(entry)}`}>
+                            {liveScore}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-neutral-400">—</p>
+                        )}
+                        <p className="text-sm font-bold text-green-700">
+                          {formatCurrency(entry.totalEarnings)}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-base font-bold text-green-700 shrink-0 ml-3">
+                        {formatCurrency(entry.totalEarnings)}
+                      </span>
+                    )}
                   </div>
                 );
               })}

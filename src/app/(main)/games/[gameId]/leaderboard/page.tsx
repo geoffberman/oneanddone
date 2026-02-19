@@ -33,11 +33,13 @@ export default async function LeaderboardPage({
   if (!game || !role) notFound();
 
   // Build all leaderboard options
-  const boardFetches: { id: string; label: string; promise: Promise<any> }[] = [
+  const boardFetches: { id: string; label: string; type: "season" | "weekly" | "sub"; promise: Promise<any> }[] = [
     {
       id: "season",
       label: `Season-Long (${game.seasonYear})`,
-      promise: getSeasonLeaderboard(gameId),
+      type: "season",
+      // Pass current tournament ID so we can swap cached earnings for real-time live earnings
+      promise: getSeasonLeaderboard(gameId, currentTournament ? { currentTournamentId: currentTournament.id } : undefined),
     },
   ];
 
@@ -45,6 +47,7 @@ export default async function LeaderboardPage({
     boardFetches.push({
       id: `weekly-${currentTournament.id}`,
       label: `This Week: ${currentTournament.name}`,
+      type: "weekly",
       promise: getWeeklyLeaderboard(gameId, currentTournament.id),
     });
   }
@@ -53,6 +56,7 @@ export default async function LeaderboardPage({
     boardFetches.push({
       id: `sub-${sg.id}`,
       label: sg.name,
+      type: "sub",
       promise: getSubGameLeaderboard(gameId, sg.id),
     });
   }
@@ -62,6 +66,7 @@ export default async function LeaderboardPage({
   const options = boardFetches.map((b, i) => ({
     id: b.id,
     label: b.label,
+    type: b.type,
     entries: results[i],
   }));
 
@@ -80,13 +85,24 @@ export default async function LeaderboardPage({
     const isWeeklyId = `weekly-${currentTournament.id}`;
     for (const option of options) {
       const isWeekly = option.id === isWeeklyId;
+      const isSeason = option.type === "season";
       const enriched = (option.entries as LeaderboardEntry[]).map((e) => {
         const live = liveMap.get(e.userId);
+        const liveEarnings = parseFloat(live?.earnings ?? "0") || 0;
+        let totalEarnings: string;
+        if (isWeekly) {
+          // Weekly board: show live earnings for this tournament
+          totalEarnings = live?.earnings ?? e.totalEarnings;
+        } else if (isSeason) {
+          // Season board: (total season – cached current tournament) + real-time live earnings
+          const base = (parseFloat(e.totalEarnings) || 0) - (parseFloat(e.currentTournamentEarnings ?? "0") || 0);
+          totalEarnings = (base + liveEarnings).toFixed(0);
+        } else {
+          totalEarnings = e.totalEarnings;
+        }
         return {
           ...e,
-          // Only override earnings for the weekly board — season/sub-game boards
-          // show cumulative totals that shouldn't be replaced by a single tournament
-          totalEarnings: isWeekly ? (live?.earnings ?? e.totalEarnings) : e.totalEarnings,
+          totalEarnings,
           currentPickName: pickMap.get(e.userId)?.name ?? null,
           currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
           livePosition: live?.position ?? null,
@@ -136,6 +152,12 @@ export default async function LeaderboardPage({
           }
           enriched[i] = { ...enriched[i], rank };
         }
+      }
+
+      // Re-sort the season board after adding live earnings so ranks reflect real-time totals
+      if (isSeason) {
+        enriched.sort((a, b) => (parseFloat(b.totalEarnings) || 0) - (parseFloat(a.totalEarnings) || 0));
+        enriched.forEach((e, i) => { e.rank = i + 1; });
       }
 
       option.entries = enriched;
