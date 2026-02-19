@@ -109,6 +109,111 @@ export async function sendMemberAddedEmail(
   }
 }
 
+export async function sendManagerEmail(
+  email: string,
+  memberName: string,
+  gameName: string,
+  subject: string,
+  message: string,
+) {
+  const client = getResendClient();
+  if (!client) return false;
+
+  const gameUrl = getBaseUrl();
+
+  try {
+    const { error } = await client.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject,
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+          <h2 style="color: #16a34a;">One and Done — ${gameName}</h2>
+          <p>Hi ${memberName},</p>
+          <p style="white-space: pre-wrap;">${message}</p>
+          <p style="margin-top: 24px;">
+            <a href="${gameUrl}"
+               style="background-color: #16a34a; color: white; padding: 12px 24px;
+                      border-radius: 6px; text-decoration: none; display: inline-block;">
+              Go to One and Done
+            </a>
+          </p>
+          <p style="color: #999; font-size: 12px; margin-top: 24px;">
+            You're receiving this because you're a member of the ${gameName} league.
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("[Email] Failed to send manager email:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[Email] Error sending manager email:", err);
+    return false;
+  }
+}
+
+export async function sendPicksReminderEmail(
+  email: string,
+  memberName: string,
+  gameName: string,
+  gameId: number,
+  tournamentName: string,
+  deadline: Date,
+) {
+  const client = getResendClient();
+  if (!client) return false;
+
+  const picksUrl = `${getBaseUrl()}/games/${gameId}`;
+  const deadlineStr = deadline.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  });
+
+  try {
+    const { error } = await client.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject: `Reminder: Make your pick for ${tournamentName}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+          <h2 style="color: #16a34a;">One and Done — ${gameName}</h2>
+          <p>Hi ${memberName},</p>
+          <p>Don't forget to submit your pick for <strong>${tournamentName}</strong>.</p>
+          <p style="color: #b45309;">Picks lock on <strong>${deadlineStr}</strong>.</p>
+          <p style="margin: 24px 0;">
+            <a href="${picksUrl}"
+               style="background-color: #16a34a; color: white; padding: 12px 24px;
+                      border-radius: 6px; text-decoration: none; display: inline-block;">
+              Make Your Pick
+            </a>
+          </p>
+          <p style="color: #999; font-size: 12px; margin-top: 24px;">
+            You're receiving this because you're a member of the ${gameName} league.
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("[Email] Failed to send reminder email:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[Email] Error sending reminder email:", err);
+    return false;
+  }
+}
+
 export async function sendInviteEmail(
   email: string,
   gameName: string,

@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { getUserRole } from "@/lib/queries/games";
 import { getTournamentField } from "@/lib/queries/tournaments";
 import { getUserPick } from "@/lib/actions/picks";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDeadline } from "@/lib/utils";
 import { PickSelectionClient } from "./pick-selection-client";
 import { TournamentInfoButton } from "@/components/tournament-info-button";
 
@@ -58,7 +58,7 @@ export default async function PickSelectionPage({
         </div>
         {lockTime && !isLocked && (
           <p className="mt-2 text-sm text-amber-600">
-            Picks lock at {formatDate(lockTime)}
+            Picks deadline {formatDeadline(lockTime)}
           </p>
         )}
         {isLocked && (
