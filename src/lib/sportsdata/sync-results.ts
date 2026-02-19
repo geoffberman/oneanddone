@@ -107,12 +107,12 @@ export async function syncResults() {
                 batch.map((p) => ({
                   tournamentId: tournament.id,
                   golferId: golferMap.get(p.PlayerID)!,
-                  position: p.Rank ?? null,
+                  position: p.Rank != null ? Math.round(p.Rank) : null,
                   earnings: p.Earnings?.toString() || "0",
-                  totalScore: p.TotalStrokes ?? null,
-                  totalScoreToPar: p.TotalScore ?? null,
-                  madeCut: p.MadeCut === 1,
-                  isWithdrawn: p.IsWithdrawn,
+                  totalScore: p.TotalStrokes != null ? Math.round(p.TotalStrokes) : null,
+                  totalScoreToPar: p.TotalScore != null ? Math.round(p.TotalScore) : null,
+                  madeCut: p.MadeCut != null ? p.MadeCut >= 0.5 : false,
+                  isWithdrawn: p.IsWithdrawn ?? false,
                   rounds: p.Rounds?.length || 0,
                 }))
               );

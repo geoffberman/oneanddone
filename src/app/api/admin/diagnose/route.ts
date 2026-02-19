@@ -377,40 +377,46 @@ export async function POST(req: Request) {
               Rounds: p.Rounds?.length,
             }));
 
-            // 6. Check golfer match rate
+            // 6. Check golfer match rate using Drizzle (not raw sql)
             if (lb.Players && lb.Players.length > 0) {
-              const playerIds = lb.Players.map((p) => p.PlayerID);
-              const golferCheck = await db.execute(sql`
-                SELECT id, external_player_id FROM golfers
-                WHERE external_player_id = ANY(${playerIds})
-              `);
-              diag.golferMatchCount = golferCheck.rows.length;
-              diag.golferMatchRate = `${golferCheck.rows.length}/${playerIds.length}`;
-
-              // 7. Actually run syncResults and capture the result
               try {
-                const { syncResults } = await import("@/lib/sportsdata/sync-results");
-                const syncResult = await syncResults();
-                diag.syncResult = syncResult;
-              } catch (syncErr) {
-                diag.syncError = String(syncErr);
-                diag.syncStack = (syncErr as Error).stack?.substring(0, 800);
-              }
-
-              // 8. Count results after sync
-              try {
-                const afterCount = await db.execute(sql`
-                  SELECT COUNT(*) as cnt FROM tournament_results
-                  WHERE tournament_id = ${t.id as number}
-                `);
-                diag.resultsAfterSync = afterCount.rows[0];
+                const { golfers: golfersTable } = await import("@/db/schema");
+                const { inArray: inArr } = await import("drizzle-orm");
+                const playerIds = lb.Players.map((p) => p.PlayerID);
+                const golferCheck = await db
+                  .select({ id: golfersTable.id, externalPlayerId: golfersTable.externalPlayerId })
+                  .from(golfersTable)
+                  .where(inArr(golfersTable.externalPlayerId, playerIds));
+                diag.golferMatchCount = golferCheck.length;
+                diag.golferMatchRate = `${golferCheck.length}/${playerIds.length}`;
               } catch (e) {
-                diag.resultsAfterSyncError = String(e);
+                diag.golferMatchError = String(e);
               }
             }
           } catch (apiErr) {
             diag.leaderboardApiError = String(apiErr);
             diag.leaderboardApiStack = (apiErr as Error).stack?.substring(0, 500);
+          }
+
+          // 7. Run syncResults regardless of above checks
+          try {
+            const { syncResults } = await import("@/lib/sportsdata/sync-results");
+            const syncResult = await syncResults();
+            diag.syncResult = syncResult;
+          } catch (syncErr) {
+            diag.syncError = String(syncErr);
+            diag.syncStack = (syncErr as Error).stack?.substring(0, 800);
+          }
+
+          // 8. Count results after sync
+          try {
+            const afterCount = await db.execute(sql`
+              SELECT COUNT(*) as cnt FROM tournament_results
+              WHERE tournament_id = ${t.id as number}
+            `);
+            diag.resultsAfterSync = afterCount.rows[0];
+          } catch (e) {
+            diag.resultsAfterSyncError = String(e);
           }
         }
       } catch (e) {
