@@ -7,6 +7,7 @@ import {
   getSubGameLeaderboard,
   getWeeklyLeaderboard,
   getCurrentTournamentPickNames,
+  getLiveScoresForGame,
   type LeaderboardEntry,
 } from "@/lib/queries/leaderboard";
 import { getSubGames } from "@/lib/actions/sub-games";
@@ -64,19 +65,28 @@ export default async function LeaderboardPage({
     entries: results[i],
   }));
 
-  // After picks lock, attach each member's current tournament pick to every board
+  // After picks lock, attach each member's current tournament pick + live scores
   const lockTime = currentTournament
     ? currentTournament.firstTeeTime || currentTournament.startDate
     : null;
   const isLocked = lockTime ? new Date() >= new Date(lockTime) : false;
+  const isInProgress = currentTournament?.isInProgress ?? false;
 
   if (isLocked && currentTournament) {
-    const pickMap = await getCurrentTournamentPickNames(gameId, currentTournament.id);
+    const [pickMap, liveMap] = await Promise.all([
+      getCurrentTournamentPickNames(gameId, currentTournament.id),
+      getLiveScoresForGame(gameId, currentTournament.id),
+    ]);
     for (const option of options) {
       option.entries = (option.entries as LeaderboardEntry[]).map((e) => ({
         ...e,
         currentPickName: pickMap.get(e.userId)?.name ?? null,
         currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
+        livePosition: liveMap.get(e.userId)?.position ?? null,
+        liveTotalScoreToPar: liveMap.get(e.userId)?.totalScoreToPar ?? null,
+        liveMadeCut: liveMap.get(e.userId)?.madeCut ?? null,
+        liveIsWithdrawn: liveMap.get(e.userId)?.isWithdrawn ?? null,
+        liveRounds: liveMap.get(e.userId)?.rounds ?? null,
       }));
     }
   }
@@ -93,6 +103,7 @@ export default async function LeaderboardPage({
         currentUserId={userId}
         defaultBoard="season"
         isLocked={isLocked}
+        isInProgress={isInProgress}
       />
     </div>
   );

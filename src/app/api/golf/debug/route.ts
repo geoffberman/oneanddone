@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       if (!name) return NextResponse.json({ error: "name required" }, { status: 400 });
 
       const currentSeason = await fetchCurrentSeason();
-      const currentYear = currentSeason.Season;
+      const currentYear = currentSeason.SeasonID;
       const diagnostics: Record<string, unknown>[] = [];
 
       for (const year of [currentYear - 1, currentYear - 2, currentYear - 3]) {

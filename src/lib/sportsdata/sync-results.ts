@@ -126,8 +126,8 @@ async function updatePickEarnings(tournamentId: number) {
     .where(eq(picks.tournamentId, tournamentId));
 
   for (const pick of tournamentPicks) {
-    const activeGolferId = pick.activeGolferId;
-    if (!activeGolferId) continue;
+    // Use activeGolferId if resolve-picks has run, otherwise fall back to primary
+    const activeGolferId = pick.activeGolferId ?? pick.primaryGolferId;
 
     const [result] = await db
       .select()

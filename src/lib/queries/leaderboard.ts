@@ -6,6 +6,7 @@ import {
   subGameTournaments,
   golfers,
   tournaments,
+  tournamentResults,
 } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 
@@ -21,6 +22,12 @@ export interface LeaderboardEntry {
   rank: number;
   currentPickName?: string | null;  // set only after picks are locked
   currentPickIsAlternate?: boolean;
+  // Live tournament data (set when a tournament is in progress or just finished)
+  livePosition?: number | null;
+  liveTotalScoreToPar?: number | null;
+  liveMadeCut?: boolean | null;
+  liveIsWithdrawn?: boolean | null;
+  liveRounds?: number | null;
 }
 
 // Returns each user's locked-in golfer for a specific tournament.
@@ -235,4 +242,60 @@ export async function getPickHistory(
     earnings: row.earnings || "0",
     isOver: row.isOver,
   }));
+}
+
+// Returns a map of userId → live tournament result for each member's active golfer.
+// Used to show live position/score on the leaderboard during (and after) a tournament.
+export async function getLiveScoresForGame(
+  gameId: number,
+  tournamentId: number
+): Promise<Map<string, {
+  position: number | null;
+  totalScoreToPar: number | null;
+  madeCut: boolean | null;
+  isWithdrawn: boolean | null;
+  rounds: number | null;
+}>> {
+  const gamePicks = await db
+    .select({
+      userId: picks.userId,
+      primaryGolferId: picks.primaryGolferId,
+      activeGolferId: picks.activeGolferId,
+    })
+    .from(picks)
+    .where(and(eq(picks.gameId, gameId), eq(picks.tournamentId, tournamentId)));
+
+  if (gamePicks.length === 0) return new Map();
+
+  const effectiveIds = [
+    ...new Set(gamePicks.map((p) => p.activeGolferId ?? p.primaryGolferId)),
+  ];
+
+  const results = await db
+    .select({
+      golferId: tournamentResults.golferId,
+      position: tournamentResults.position,
+      totalScoreToPar: tournamentResults.totalScoreToPar,
+      madeCut: tournamentResults.madeCut,
+      isWithdrawn: tournamentResults.isWithdrawn,
+      rounds: tournamentResults.rounds,
+    })
+    .from(tournamentResults)
+    .where(
+      and(
+        eq(tournamentResults.tournamentId, tournamentId),
+        inArray(tournamentResults.golferId, effectiveIds)
+      )
+    );
+
+  const resultMap = new Map(results.map((r) => [r.golferId, r]));
+  const out = new Map<string, (typeof results)[0]>();
+
+  for (const pick of gamePicks) {
+    const effectiveId = pick.activeGolferId ?? pick.primaryGolferId;
+    const result = resultMap.get(effectiveId);
+    if (result) out.set(pick.userId, result);
+  }
+
+  return out;
 }
