@@ -68,10 +68,10 @@ export async function syncResults() {
           await db
             .update(tournamentResults)
             .set({
-              position: player.Rank || null,
+              position: player.Rank ?? null,
               earnings: player.Earnings?.toString() || "0",
-              totalScore: player.TotalStrokes || null,
-              totalScoreToPar: player.TotalScore || null,
+              totalScore: player.TotalStrokes ?? null,
+              totalScoreToPar: player.TotalScore ?? null,
               madeCut: player.MadeCut === 1,
               isWithdrawn: player.IsWithdrawn,
               rounds: player.Rounds?.length || 0,
@@ -83,10 +83,10 @@ export async function syncResults() {
             id: sql`nextval('tournament_results_id_seq')`,
             tournamentId: tournament.id,
             golferId: golfer.id,
-            position: player.Rank || null,
+            position: player.Rank ?? null,
             earnings: player.Earnings?.toString() || "0",
-            totalScore: player.TotalStrokes || null,
-            totalScoreToPar: player.TotalScore || null,
+            totalScore: player.TotalStrokes ?? null,
+            totalScoreToPar: player.TotalScore ?? null,
             madeCut: player.MadeCut === 1,
             isWithdrawn: player.IsWithdrawn,
             rounds: player.Rounds?.length || 0,
