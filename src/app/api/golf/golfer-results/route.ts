@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
 import {
   fetchCurrentSeason,
   fetchTournamentsBySeason,
@@ -15,49 +14,69 @@ interface GolferYearResult {
   madeCut: boolean;
 }
 
-const getGolferTournamentHistory = unstable_cache(
-  async (
-    tournamentName: string,
-    firstName: string,
-    lastName: string
-  ): Promise<GolferYearResult[]> => {
-    const currentSeason = await fetchCurrentSeason();
-    const currentYear = currentSeason.Season;
-    const results: GolferYearResult[] = [];
+// Simple in-memory cache (key → { data, ts })
+const cache = new Map<string, { data: GolferYearResult[]; ts: number }>();
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-    for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
-      try {
-        const tournaments = await fetchTournamentsBySeason(year);
-        const match = tournaments.find((t) =>
-          matchesTournamentName(t.Name, tournamentName)
-        );
-        if (!match) continue;
+async function getGolferTournamentHistory(
+  tournamentName: string,
+  firstName: string,
+  lastName: string
+): Promise<GolferYearResult[]> {
+  const cacheKey = `golfer:${tournamentName}:${firstName}:${lastName}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    return cached.data;
+  }
 
-        const leaderboard = await fetchLeaderboard(match.TournamentID);
-        const player = leaderboard.Players.find(
-          (p) =>
-            p.FirstName.toLowerCase() === firstName.toLowerCase() &&
-            p.LastName.toLowerCase() === lastName.toLowerCase()
-        );
-        if (!player) continue;
+  const currentSeason = await fetchCurrentSeason();
+  const currentYear = currentSeason.Season;
+  const results: GolferYearResult[] = [];
 
-        results.push({
-          year,
-          position: player.Rank,
-          totalScoreToPar: player.TotalScore,
-          earnings: player.Earnings,
-          madeCut: player.MadeCut === 1,
-        });
-      } catch {
-        // Skip years where API call fails
+  for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
+    try {
+      const tournaments = await fetchTournamentsBySeason(year);
+      const match = tournaments.find((t) =>
+        matchesTournamentName(t.Name, tournamentName)
+      );
+      if (!match) {
+        console.log(`[GolferResults] No match for "${tournamentName}" in ${year}`);
+        continue;
       }
-    }
 
-    return results;
-  },
-  ["golfer-tournament-history-v2"],
-  { revalidate: 86400 }
-);
+      const leaderboard = await fetchLeaderboard(match.TournamentID);
+      const players = leaderboard.Players ?? [];
+      if (players.length === 0) {
+        console.log(`[GolferResults] No players in leaderboard for "${match.Name}" (${year}, id=${match.TournamentID})`);
+        continue;
+      }
+
+      const player = players.find(
+        (p) =>
+          p.FirstName.toLowerCase() === firstName.toLowerCase() &&
+          p.LastName.toLowerCase() === lastName.toLowerCase()
+      );
+      if (!player) continue;
+
+      results.push({
+        year,
+        position: player.Rank,
+        totalScoreToPar: player.TotalScore,
+        earnings: player.Earnings,
+        madeCut: player.MadeCut === 1,
+      });
+    } catch (err) {
+      console.error(`[GolferResults] Error fetching ${year} for "${firstName} ${lastName}" at "${tournamentName}":`, err);
+    }
+  }
+
+  // Only cache if we got results
+  if (results.length > 0) {
+    cache.set(cacheKey, { data: results, ts: Date.now() });
+  }
+
+  return results;
+}
 
 export async function GET(request: NextRequest) {
   const tournamentName = request.nextUrl.searchParams.get("tournamentName");

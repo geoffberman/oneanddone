@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
 import {
   fetchCurrentSeason,
   fetchTournamentsBySeason,
@@ -18,47 +17,66 @@ interface YearResult {
   }[];
 }
 
-const getTournamentHistory = unstable_cache(
-  async (name: string): Promise<YearResult[]> => {
-    const currentSeason = await fetchCurrentSeason();
-    const currentYear = currentSeason.Season;
-    const years: YearResult[] = [];
+// Simple in-memory cache (key → { data, ts })
+const cache = new Map<string, { data: YearResult[]; ts: number }>();
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-    for (const year of [currentYear - 1, currentYear - 2, currentYear - 3]) {
-      try {
-        const tournaments = await fetchTournamentsBySeason(year);
-        const match = tournaments.find((t) =>
-          matchesTournamentName(t.Name, name)
-        );
-        if (!match) continue;
+async function getTournamentHistory(name: string): Promise<YearResult[]> {
+  const cacheKey = `history:${name}`;
+  const cached = cache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    return cached.data;
+  }
 
-        const leaderboard = await fetchLeaderboard(match.TournamentID);
-        const top10 = leaderboard.Players.filter(
-          (p) => p.Rank > 0 && p.MadeCut === 1
-        )
-          .sort((a, b) => a.Rank - b.Rank)
-          .slice(0, 10)
-          .map((p) => ({
-            position: p.Rank,
-            firstName: p.FirstName,
-            lastName: p.LastName,
-            totalScoreToPar: p.TotalScore,
-            earnings: p.Earnings,
-          }));
+  const currentSeason = await fetchCurrentSeason();
+  const currentYear = currentSeason.Season;
+  const years: YearResult[] = [];
 
-        if (top10.length > 0) {
-          years.push({ year, results: top10 });
-        }
-      } catch {
-        // Skip years where API call fails
+  for (const year of [currentYear - 1, currentYear - 2, currentYear - 3]) {
+    try {
+      const tournaments = await fetchTournamentsBySeason(year);
+      const match = tournaments.find((t) =>
+        matchesTournamentName(t.Name, name)
+      );
+      if (!match) {
+        console.log(`[TournamentHistory] No match for "${name}" in ${year}`);
+        continue;
       }
-    }
 
-    return years;
-  },
-  ["tournament-history-v2"],
-  { revalidate: 86400 }
-);
+      const leaderboard = await fetchLeaderboard(match.TournamentID);
+      const players = leaderboard.Players ?? [];
+      if (players.length === 0) {
+        console.log(`[TournamentHistory] No players in leaderboard for "${match.Name}" (${year}, id=${match.TournamentID})`);
+        continue;
+      }
+
+      const top10 = players
+        .filter((p) => p.Rank > 0 && p.MadeCut === 1)
+        .sort((a, b) => a.Rank - b.Rank)
+        .slice(0, 10)
+        .map((p) => ({
+          position: p.Rank,
+          firstName: p.FirstName,
+          lastName: p.LastName,
+          totalScoreToPar: p.TotalScore,
+          earnings: p.Earnings,
+        }));
+
+      if (top10.length > 0) {
+        years.push({ year, results: top10 });
+      }
+    } catch (err) {
+      console.error(`[TournamentHistory] Error fetching ${year} for "${name}":`, err);
+    }
+  }
+
+  // Only cache if we got results — don't cache empty failures
+  if (years.length > 0) {
+    cache.set(cacheKey, { data: years, ts: Date.now() });
+  }
+
+  return years;
+}
 
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("name");
