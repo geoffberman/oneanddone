@@ -6,12 +6,12 @@ import {
   usedGolfers,
   seasons,
 } from "@/db/schema";
-import { eq, and, gte, asc, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, asc, desc, sql } from "drizzle-orm";
 
 export async function getCurrentTournament() {
   const now = new Date();
 
-  // First try to find an in-progress tournament
+  // 1. Actively in-progress tournament (set by sync-results cron)
   const [inProgress] = await db
     .select()
     .from(tournaments)
@@ -20,7 +20,32 @@ export async function getCurrentTournament() {
 
   if (inProgress) return inProgress;
 
-  // Otherwise find the next upcoming tournament
+  // 2. Tournament that started within the past 6 days (covers the full tournament
+  //    week, including today before the cron marks it in-progress, and the 6-hour
+  //    cooldown after it ends). We approximate the end as startDate + 4 days + 6h.
+  const sixDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const [recent] = await db
+    .select()
+    .from(tournaments)
+    .where(
+      and(
+        lte(tournaments.startDate, now),        // already started
+        gte(tournaments.startDate, sixDaysAgo), // started within past 6 days
+        eq(tournaments.canceled, false)
+      )
+    )
+    .orderBy(desc(tournaments.startDate))
+    .limit(1);
+
+  if (recent) {
+    // Keep showing this tournament until ~6 hours after its approximate end
+    const approxEnd = new Date(
+      new Date(recent.startDate).getTime() + (4 * 24 + 6) * 60 * 60 * 1000
+    );
+    if (now <= approxEnd) return recent;
+  }
+
+  // 3. Next upcoming tournament
   const [upcoming] = await db
     .select()
     .from(tournaments)
