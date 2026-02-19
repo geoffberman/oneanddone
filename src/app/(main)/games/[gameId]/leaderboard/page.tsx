@@ -78,7 +78,7 @@ export default async function LeaderboardPage({
       getLiveScoresForGame(gameId, currentTournament.id),
     ]);
     for (const option of options) {
-      option.entries = (option.entries as LeaderboardEntry[]).map((e) => ({
+      const enriched = (option.entries as LeaderboardEntry[]).map((e) => ({
         ...e,
         currentPickName: pickMap.get(e.userId)?.name ?? null,
         currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
@@ -88,6 +88,46 @@ export default async function LeaderboardPage({
         liveIsWithdrawn: liveMap.get(e.userId)?.isWithdrawn ?? null,
         liveRounds: liveMap.get(e.userId)?.rounds ?? null,
       }));
+
+      // During a live tournament, re-sort the weekly leaderboard by live score
+      // (earnings stay $0 until the tournament finishes, so they're useless for ranking)
+      if (isInProgress && option.id === `weekly-${currentTournament.id}`) {
+        enriched.sort((a, b) => {
+          const aWD = a.liveIsWithdrawn ?? false;
+          const bWD = b.liveIsWithdrawn ?? false;
+          const aMC = a.liveMadeCut === false;
+          const bMC = b.liveMadeCut === false;
+
+          // WD last, MC second-to-last
+          if (aWD !== bWD) return aWD ? 1 : -1;
+          if (aMC !== bMC) return aMC ? 1 : -1;
+
+          // Active players: sort by score-to-par ascending (null = hasn't teed off → worst)
+          const aScore = a.liveTotalScoreToPar;
+          const bScore = b.liveTotalScoreToPar;
+          if (aScore == null && bScore == null) return 0;
+          if (aScore == null) return 1;
+          if (bScore == null) return -1;
+          return aScore - bScore;
+        });
+
+        // Re-assign ranks, giving tied scores the same rank
+        let rank = 1;
+        for (let i = 0; i < enriched.length; i++) {
+          if (i > 0) {
+            const prev = enriched[i - 1];
+            const curr = enriched[i];
+            const sameTier =
+              (prev.liveIsWithdrawn ?? false) === (curr.liveIsWithdrawn ?? false) &&
+              (prev.liveMadeCut === false) === (curr.liveMadeCut === false) &&
+              prev.liveTotalScoreToPar === curr.liveTotalScoreToPar;
+            if (!sameTier) rank = i + 1;
+          }
+          enriched[i] = { ...enriched[i], rank };
+        }
+      }
+
+      option.entries = enriched;
     }
   }
 
