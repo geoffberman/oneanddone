@@ -324,7 +324,7 @@ export async function updateUserProfile(displayName: string) {
     .set({ displayName: trimmed })
     .where(eq(users.id, session.user.id));
 
-  revalidatePath("/");
+  revalidatePath("/", "layout"); // flush all pages so leaderboard reflects the new name
 }
 
 export async function removeMember(

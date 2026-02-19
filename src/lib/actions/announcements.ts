@@ -102,7 +102,7 @@ export async function getAnnouncements(gameId: number, limit = 5) {
     .select({
       id: announcements.id,
       message: announcements.message,
-      authorName: users.name,
+      authorName: sql<string | null>`COALESCE(${users.displayName}, ${users.name})`,
       createdAt: announcements.createdAt,
     })
     .from(announcements)
