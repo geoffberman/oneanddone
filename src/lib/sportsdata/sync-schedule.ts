@@ -6,6 +6,7 @@ import {
   fetchPlayerSeasonStats,
   fetchCurrentSeason,
 } from "./client";
+import { parseEasternDateTime } from "./tournament-match";
 
 export async function syncSchedule() {
   const currentSeason = await fetchCurrentSeason();
@@ -39,7 +40,7 @@ export async function syncSchedule() {
     const tournamentValues = apiTournaments.map((t) => {
       const tStart = new Date(t.StartDate);
       const tEnd = t.EndDate ? new Date(t.EndDate) : null;
-      const tFirstTee = t.StartDateTime ? new Date(t.StartDateTime) : null;
+      const tFirstTee = t.StartDateTime ? parseEasternDateTime(t.StartDateTime) : null;
       const tPurse = t.Purse?.toString() || null;
       return sql`(${t.TournamentID}, ${seasonId}, ${t.Name}, ${tStart}, ${tEnd}, ${t.Location}, ${t.Venue}, ${t.Par}, ${tPurse}, ${t.TimeZone}, ${tFirstTee}, ${t.IsOver}, ${t.IsInProgress}, ${t.Canceled}, ${now}, ${now})`;
     });
