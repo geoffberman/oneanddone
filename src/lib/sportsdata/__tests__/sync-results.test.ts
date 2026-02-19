@@ -104,37 +104,25 @@ function setupDbMock(opts: {
     })),
   }));
 
-  // db.insert() - for golfer inserts and tournament result inserts
+  // db.insert() - for golfer inserts and tournament result upserts
   dbMock.insert.mockImplementation((table: any) => {
     const tableName =
       table === "golfers" || table?.id === "golfers.id" ? "golfers" : "results";
     operations.push(`insert:${tableName}`);
-    return makeInsertChain(tableName);
-  });
-
-  // db.delete() chain
-  dbMock.delete.mockImplementation(() => ({
-    where: vi.fn().mockImplementation((...args: any[]) => {
-      operations.push("delete:tournament_results");
-      return Promise.resolve();
-    }),
-  }));
-
-  // db.transaction() — runs the callback with the same db mock (tx)
-  dbMock.transaction.mockImplementation(async (fn: any) => {
-    // Create a transaction proxy that delegates to the main mock
-    const tx: any = {
-      delete: dbMock.delete,
-      insert: vi.fn().mockImplementation(() => ({
+    if (tableName === "results") {
+      return {
         values: vi.fn().mockImplementation((vals: any) => {
           insertedResults.push(Array.isArray(vals) ? vals : [vals]);
-          operations.push("tx:insert:results");
-          return Promise.resolve();
+          return {
+            onConflictDoUpdate: vi.fn().mockImplementation(() => {
+              operations.push("upsert:results");
+              return Promise.resolve();
+            }),
+          };
         }),
-      })),
-      execute: dbMock.execute,
-    };
-    return fn(tx);
+      };
+    }
+    return makeInsertChain(tableName);
   });
 
   // db.execute() — for any remaining raw SQL
@@ -274,7 +262,7 @@ describe("syncResults", () => {
     operations.length = 0;
   });
 
-  it("updates tournament status and inserts results via transaction", async () => {
+  it("updates tournament status and upserts results", async () => {
     const tournament = makeTournament();
     const leaderboard = makeLeaderboard();
 
@@ -304,10 +292,9 @@ describe("syncResults", () => {
     // Should have called db.update() for tournament status
     expect(dbMock.update).toHaveBeenCalled();
 
-    // Should use a transaction with delete + insert
-    expect(dbMock.transaction).toHaveBeenCalled();
-    expect(operations).toContain("delete:tournament_results");
-    expect(operations).toContain("tx:insert:results");
+    // Should upsert results (no transaction — Neon HTTP driver doesn't support them)
+    expect(operations).toContain("insert:results");
+    expect(operations).toContain("upsert:results");
   });
 
   it("creates missing golfers before inserting results", async () => {
@@ -388,8 +375,8 @@ describe("syncResults", () => {
     const results = await syncResults();
 
     expect(results[0].resultsCount).toBe(0);
-    // Should NOT start a transaction when there are no players
-    expect(dbMock.transaction).not.toHaveBeenCalled();
+    // Should NOT insert results when there are no players
+    expect(operations).not.toContain("upsert:results");
   });
 
   it("skips tournaments that haven't started yet", async () => {
@@ -445,7 +432,7 @@ describe("syncResults", () => {
     expect(source).not.toContain("tournament_results_id_seq");
   });
 
-  it("uses delete+insert transaction instead of fragile ON CONFLICT", async () => {
+  it("uses onConflictDoUpdate upsert instead of transactions", async () => {
     const { readFileSync } = await import("fs");
     const { resolve } = await import("path");
     const source = readFileSync(
@@ -453,22 +440,16 @@ describe("syncResults", () => {
       "utf-8"
     );
 
-    // Must use transaction-based delete + insert
-    expect(source).toContain("db.transaction");
-    expect(source).toContain(".delete(tournamentResults)");
+    // Must use Drizzle's onConflictDoUpdate (Neon HTTP driver has no transaction support)
+    expect(source).toContain("onConflictDoUpdate");
     expect(source).toContain(".insert(tournamentResults)");
-
-    // Must NOT use raw SQL ON CONFLICT for tournament_results
-    // (ON CONFLICT depends on the unique index existing in the DB)
-    expect(source).not.toContain(
-      "ON CONFLICT (tournament_id, golfer_id) DO UPDATE"
-    );
+    expect(source).not.toContain("db.transaction");
 
     // Must use inArray for batch golfer lookup
     expect(source).toContain("inArray");
   });
 
-  it("uses ?? null for numeric fields, not || null", async () => {
+  it("uses Math.round for numeric fields to handle decimal API values", async () => {
     const { readFileSync } = await import("fs");
     const { resolve } = await import("path");
     const source = readFileSync(
@@ -476,13 +457,9 @@ describe("syncResults", () => {
       "utf-8"
     );
 
-    expect(source).toContain("p.Rank ?? null");
-    expect(source).toContain("p.TotalStrokes ?? null");
-    expect(source).toContain("p.TotalScore ?? null");
-
-    expect(source).not.toMatch(/p\.Rank \|\| null/);
-    expect(source).not.toMatch(/p\.TotalStrokes \|\| null/);
-    expect(source).not.toMatch(/p\.TotalScore \|\| null/);
+    expect(source).toContain("Math.round(p.Rank)");
+    expect(source).toContain("Math.round(p.TotalStrokes)");
+    expect(source).toContain("Math.round(p.TotalScore)");
   });
 
   it("uses Drizzle ORM onConflictDoNothing for missing golfers", async () => {

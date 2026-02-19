@@ -92,18 +92,13 @@ export async function syncResults() {
         const matchedPlayers = players.filter((p) => golferMap.has(p.PlayerID));
 
         if (matchedPlayers.length > 0) {
-          // Use a transaction: delete old results then insert fresh ones.
-          // This avoids dependency on the unique index existing for ON CONFLICT.
-          await db.transaction(async (tx) => {
-            await tx
-              .delete(tournamentResults)
-              .where(eq(tournamentResults.tournamentId, tournament.id));
-
-            // Insert in batches of 200 to avoid exceeding parameter limits
-            const BATCH_SIZE = 200;
-            for (let i = 0; i < matchedPlayers.length; i += BATCH_SIZE) {
-              const batch = matchedPlayers.slice(i, i + BATCH_SIZE);
-              await tx.insert(tournamentResults).values(
+          // Upsert in batches — Neon HTTP driver does not support transactions
+          const BATCH_SIZE = 200;
+          for (let i = 0; i < matchedPlayers.length; i += BATCH_SIZE) {
+            const batch = matchedPlayers.slice(i, i + BATCH_SIZE);
+            await db
+              .insert(tournamentResults)
+              .values(
                 batch.map((p) => ({
                   tournamentId: tournament.id,
                   golferId: golferMap.get(p.PlayerID)!,
@@ -115,9 +110,21 @@ export async function syncResults() {
                   isWithdrawn: p.IsWithdrawn ?? false,
                   rounds: p.Rounds?.length || 0,
                 }))
-              );
-            }
-          });
+              )
+              .onConflictDoUpdate({
+                target: [tournamentResults.tournamentId, tournamentResults.golferId],
+                set: {
+                  position: sql`EXCLUDED.position`,
+                  earnings: sql`EXCLUDED.earnings`,
+                  totalScore: sql`EXCLUDED.total_score`,
+                  totalScoreToPar: sql`EXCLUDED.total_score_to_par`,
+                  madeCut: sql`EXCLUDED.made_cut`,
+                  isWithdrawn: sql`EXCLUDED.is_withdrawn`,
+                  rounds: sql`EXCLUDED.rounds`,
+                  updatedAt: new Date(),
+                },
+              });
+          }
 
           resultsCount = matchedPlayers.length;
         }
