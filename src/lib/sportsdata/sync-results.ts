@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { tournaments, golfers, tournamentResults, picks } from "@/db/schema";
-import { eq, and, or, sql } from "drizzle-orm";
+import { eq, and, or, sql, inArray } from "drizzle-orm";
 import { fetchLeaderboard } from "./client";
 
 export async function syncResults() {
@@ -42,60 +42,75 @@ export async function syncResults() {
         })
         .where(eq(tournaments.id, tournament.id));
 
-      // Upsert results for each player
+      const players = leaderboard.Players || [];
       let resultsCount = 0;
-      for (const player of leaderboard.Players || []) {
-        const [golfer] = await db
-          .select()
+
+      if (players.length > 0) {
+        // Batch-fetch all golfers for this leaderboard in one query
+        const playerIds = players.map((p) => p.PlayerID);
+        const golferRows = await db
+          .select({ id: golfers.id, externalPlayerId: golfers.externalPlayerId })
           .from(golfers)
-          .where(eq(golfers.externalPlayerId, player.PlayerID))
-          .limit(1);
+          .where(inArray(golfers.externalPlayerId, playerIds));
 
-        if (!golfer) continue;
+        const golferMap = new Map(golferRows.map((g) => [g.externalPlayerId, g.id]));
 
-        const [existing] = await db
-          .select()
-          .from(tournamentResults)
-          .where(
-            and(
-              eq(tournamentResults.tournamentId, tournament.id),
-              eq(tournamentResults.golferId, golfer.id)
-            )
-          )
-          .limit(1);
-
-        if (existing) {
-          await db
-            .update(tournamentResults)
-            .set({
-              position: player.Rank ?? null,
-              earnings: player.Earnings?.toString() || "0",
-              totalScore: player.TotalStrokes ?? null,
-              totalScoreToPar: player.TotalScore ?? null,
-              madeCut: player.MadeCut === 1,
-              isWithdrawn: player.IsWithdrawn,
-              rounds: player.Rounds?.length || 0,
-              updatedAt: new Date(),
-            })
-            .where(eq(tournamentResults.id, existing.id));
-        } else {
-          await db.insert(tournamentResults).values({
-            id: sql`nextval('tournament_results_id_seq')`,
-            tournamentId: tournament.id,
-            golferId: golfer.id,
-            position: player.Rank ?? null,
-            earnings: player.Earnings?.toString() || "0",
-            totalScore: player.TotalStrokes ?? null,
-            totalScoreToPar: player.TotalScore ?? null,
-            madeCut: player.MadeCut === 1,
-            isWithdrawn: player.IsWithdrawn,
-            rounds: player.Rounds?.length || 0,
-            createdAt: now,
-            updatedAt: now,
-          });
+        // Insert any golfers not yet in the DB (handles tournaments starting before sync-field runs)
+        const missingPlayers = players.filter((p) => !golferMap.has(p.PlayerID));
+        if (missingPlayers.length > 0) {
+          const golferValues = missingPlayers.map((p) =>
+            sql`(${p.PlayerID}, ${p.FirstName}, ${p.LastName}, ${p.Country ?? null}, ${null}, ${now}, ${now})`
+          );
+          const inserted = await db.execute(sql`
+            INSERT INTO golfers (external_player_id, first_name, last_name, country, photo_url, created_at, updated_at)
+            VALUES ${sql.join(golferValues, sql`, `)}
+            ON CONFLICT (external_player_id) DO NOTHING
+            RETURNING id, external_player_id
+          `);
+          for (const row of inserted.rows) {
+            golferMap.set(row.external_player_id as number, row.id as number);
+          }
         }
 
-        resultsCount++;
+        // Build result values for all matched players
+        const matchedPlayers = players.filter((p) => golferMap.has(p.PlayerID));
+
+        if (matchedPlayers.length > 0) {
+          const resultValues = matchedPlayers.map((p) => {
+            const golferId = golferMap.get(p.PlayerID)!;
+            return sql`(
+              ${tournament.id},
+              ${golferId},
+              ${p.Rank ?? null},
+              ${p.Earnings?.toString() || "0"},
+              ${p.TotalStrokes ?? null},
+              ${p.TotalScore ?? null},
+              ${p.MadeCut === 1},
+              ${p.IsWithdrawn},
+              ${p.Rounds?.length || 0},
+              ${now},
+              ${now}
+            )`;
+          });
+
+          // Bulk upsert — no manual sequence needed, no N+1 queries
+          await db.execute(sql`
+            INSERT INTO tournament_results
+              (tournament_id, golfer_id, position, earnings, total_score, total_score_to_par, made_cut, is_withdrawn, rounds, created_at, updated_at)
+            VALUES ${sql.join(resultValues, sql`, `)}
+            ON CONFLICT (tournament_id, golfer_id) DO UPDATE SET
+              position = EXCLUDED.position,
+              earnings = EXCLUDED.earnings,
+              total_score = EXCLUDED.total_score,
+              total_score_to_par = EXCLUDED.total_score_to_par,
+              made_cut = EXCLUDED.made_cut,
+              is_withdrawn = EXCLUDED.is_withdrawn,
+              rounds = EXCLUDED.rounds,
+              updated_at = EXCLUDED.updated_at
+          `);
+
+          resultsCount = matchedPlayers.length;
+        }
       }
 
       // Update cached earnings on picks for this tournament
