@@ -462,6 +462,42 @@ describe("syncResults", () => {
     expect(source).toContain("Math.round(p.TotalScore)");
   });
 
+  it("sets madeCut to null during in-progress tournaments", async () => {
+    const tournament = makeTournament();
+    const leaderboard = makeLeaderboard({
+      Tournament: { IsOver: false, IsInProgress: true },
+      Players: [
+        {
+          PlayerID: 40001,
+          FirstName: "Scottie",
+          LastName: "Scheffler",
+          Country: "USA",
+          TotalScore: -5,
+          TotalStrokes: 275,
+          Earnings: 0,
+          Rank: 1,
+          IsWithdrawn: false,
+          MadeCut: 0.2, // Projection probability — NOT a real cut result
+          Rounds: [{ Number: 1 }],
+        },
+      ],
+    });
+
+    setupDbMock({
+      tournaments: [tournament],
+      golferRows: [{ id: 1, externalPlayerId: 40001 }],
+    });
+
+    mockFetchLeaderboard.mockResolvedValue(leaderboard);
+
+    const { syncResults } = await import("../sync-results");
+    await syncResults();
+
+    expect(insertedResults.length).toBeGreaterThan(0);
+    // During in-progress tournaments, madeCut should be null (unknown)
+    expect(insertedResults[0][0].madeCut).toBeNull();
+  });
+
   it("uses Drizzle ORM onConflictDoNothing for missing golfers", async () => {
     const { readFileSync } = await import("fs");
     const { resolve } = await import("path");

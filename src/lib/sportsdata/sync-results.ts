@@ -43,6 +43,7 @@ export async function syncResults() {
         .where(eq(tournaments.id, tournament.id));
 
       const players = leaderboard.Players || [];
+      const isOver = leaderboard.Tournament.IsOver;
       let resultsCount = 0;
 
       if (players.length > 0) {
@@ -106,7 +107,12 @@ export async function syncResults() {
                   earnings: p.Earnings?.toString() || "0",
                   totalScore: p.TotalStrokes != null ? Math.round(p.TotalStrokes) : null,
                   totalScoreToPar: p.TotalScore != null ? Math.round(p.TotalScore) : null,
-                  madeCut: p.MadeCut != null ? p.MadeCut >= 0.5 : false,
+                  // During in-progress tournaments the API returns a projection
+                  // probability (e.g. 0.2) for MadeCut — not an actual cut result.
+                  // Only interpret it once the tournament is over.
+                  madeCut: isOver
+                    ? (p.MadeCut != null ? p.MadeCut >= 0.5 : false)
+                    : null,
                   isWithdrawn: p.IsWithdrawn ?? false,
                   rounds: p.Rounds?.length || 0,
                 }))
