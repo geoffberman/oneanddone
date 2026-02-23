@@ -8,9 +8,11 @@ import {
   getWeeklyLeaderboard,
   getCurrentTournamentPickNames,
   getLiveScoresForGame,
+  getUsersWithPickForTournament,
   type LeaderboardEntry,
 } from "@/lib/queries/leaderboard";
 import { getSubGames } from "@/lib/actions/sub-games";
+import { getProjectedEarnings } from "@/lib/golf/payout-table";
 import { LeaderboardClient } from "./leaderboard-client";
 
 export default async function LeaderboardPage({
@@ -70,12 +72,26 @@ export default async function LeaderboardPage({
     entries: results[i],
   }));
 
+  // Always get which users have a pick for the current tournament (for checkmark/X indicator)
+  const currentPickUsers = currentTournament
+    ? await getUsersWithPickForTournament(gameId, currentTournament.id)
+    : new Set<string>();
+
+  // Mark hasCurrentPick on all entries across all boards
+  for (const option of options) {
+    option.entries = (option.entries as LeaderboardEntry[]).map((e) => ({
+      ...e,
+      hasCurrentPick: currentPickUsers.has(e.userId),
+    }));
+  }
+
   // After picks lock, attach each member's current tournament pick + live scores
   const lockTime = currentTournament
     ? currentTournament.firstTeeTime || currentTournament.startDate
     : null;
   const isLocked = lockTime ? new Date() >= new Date(lockTime) : false;
   const isInProgress = currentTournament?.isInProgress ?? false;
+  const purse = parseFloat(currentTournament?.purse ?? "0") || 0;
 
   if (isLocked && currentTournament) {
     const [pickMap, liveMap] = await Promise.all([
@@ -88,11 +104,17 @@ export default async function LeaderboardPage({
       const isSeason = option.type === "season";
       const enriched = (option.entries as LeaderboardEntry[]).map((e) => {
         const live = liveMap.get(e.userId);
-        const liveEarnings = parseFloat(live?.earnings ?? "0") || 0;
+
+        // Compute projected earnings: use API earnings if available, otherwise payout table
+        let liveEarnings = parseFloat(live?.earnings ?? "0") || 0;
+        if (liveEarnings === 0 && live?.position && live.position > 0 && purse > 0 && !live.isWithdrawn) {
+          liveEarnings = getProjectedEarnings(purse, live.position, live.tiedCount);
+        }
+
         let totalEarnings: string;
         if (isWeekly) {
-          // Weekly board: show live earnings for this tournament
-          totalEarnings = live?.earnings ?? e.totalEarnings;
+          // Weekly board: show live/projected earnings for this tournament
+          totalEarnings = liveEarnings > 0 ? liveEarnings.toFixed(0) : e.totalEarnings;
         } else if (isSeason) {
           // Season board: (total season – cached current tournament) + real-time live earnings
           const base = (parseFloat(e.totalEarnings) || 0) - (parseFloat(e.currentTournamentEarnings ?? "0") || 0);
@@ -107,6 +129,7 @@ export default async function LeaderboardPage({
           currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
           livePosition: live?.position ?? null,
           liveIsTied: live?.isTied ?? false,
+          liveTiedCount: live?.tiedCount ?? 1,
           liveTotalScoreToPar: live?.totalScoreToPar ?? null,
           liveMadeCut: live?.madeCut ?? null,
           liveIsWithdrawn: live?.isWithdrawn ?? null,

@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatCurrency } from "@/lib/utils";
-import { Trophy } from "lucide-react";
+import { Trophy, Check, X } from "lucide-react";
 
 interface LeaderboardEntry {
   userId: string;
@@ -18,10 +18,12 @@ interface LeaderboardEntry {
   totalEarnings: string;
   pickCount: number;
   rank: number;
+  hasCurrentPick?: boolean;
   currentPickName?: string | null;
   currentPickIsAlternate?: boolean;
   livePosition?: number | null;
   liveIsTied?: boolean;
+  liveTiedCount?: number;
   liveTotalScoreToPar?: number | null;
   liveMadeCut?: boolean | null;
   liveIsWithdrawn?: boolean | null;
@@ -54,7 +56,7 @@ function formatLiveScore(entry: LeaderboardEntry): string | null {
 
   const prefix = entry.liveIsTied ? "T" : "";
 
-  // Show position + score first (takes priority over cut status)
+  // Show position + tournament total score to par
   if (entry.livePosition != null && entry.livePosition > 0) {
     const score = formatScoreToPar(entry.liveTotalScoreToPar);
     return score
@@ -83,6 +85,13 @@ function liveScoreColor(entry: LeaderboardEntry): string {
   if (score < 0) return "text-green-700";
   if (score > 0) return "text-red-600";
   return "text-neutral-600";
+}
+
+function PickStatusIndicator({ hasPick }: { hasPick: boolean }) {
+  if (hasPick) {
+    return <Check className="h-3.5 w-3.5 text-green-600" />;
+  }
+  return <X className="h-3.5 w-3.5 text-red-500" />;
 }
 
 export function LeaderboardClient({
@@ -187,8 +196,9 @@ export function LeaderboardClient({
                             )}
                           </p>
                         ) : (
-                          <p className="text-xs text-neutral-500">
-                            {entry.pickCount} pick{entry.pickCount !== 1 ? "s" : ""}
+                          <p className="text-xs text-neutral-500 flex items-center gap-1">
+                            <PickStatusIndicator hasPick={entry.hasCurrentPick ?? false} />
+                            <span>{entry.hasCurrentPick ? "Picked" : "No pick"}</span>
                           </p>
                         )}
                       </div>
@@ -202,7 +212,7 @@ export function LeaderboardClient({
                             {liveScore}
                           </p>
                         ) : (
-                          <p className="text-sm text-neutral-400">—</p>
+                          <p className="text-sm text-neutral-400">&mdash;</p>
                         )}
                         <p className="text-sm font-bold text-green-700">
                           {formatCurrency(entry.totalEarnings)}
