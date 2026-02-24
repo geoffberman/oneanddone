@@ -22,15 +22,29 @@ export interface LeaderboardEntry {
   currentTournamentEarnings?: string;
   pickCount: number;
   rank: number;
-  currentPickName?: string | null;  // set only after picks are locked
+  hasCurrentPick?: boolean;            // whether user has a pick for the current tournament
+  currentPickName?: string | null;     // set only after picks are locked
   currentPickIsAlternate?: boolean;
   // Live tournament data (set when a tournament is in progress or just finished)
   livePosition?: number | null;
   liveIsTied?: boolean;
+  liveTiedCount?: number;              // how many players share this position (for payout calc)
   liveTotalScoreToPar?: number | null;
   liveMadeCut?: boolean | null;
   liveIsWithdrawn?: boolean | null;
   liveRounds?: number | null;
+}
+
+// Returns a Set of userIds who have submitted a pick for a given tournament.
+export async function getUsersWithPickForTournament(
+  gameId: number,
+  tournamentId: number
+): Promise<Set<string>> {
+  const rows = await db
+    .select({ userId: picks.userId })
+    .from(picks)
+    .where(and(eq(picks.gameId, gameId), eq(picks.tournamentId, tournamentId)));
+  return new Set(rows.map((r) => r.userId));
 }
 
 // Returns each user's locked-in golfer for a specific tournament.
@@ -317,6 +331,7 @@ export async function getLiveScoresForGame(
 ): Promise<Map<string, {
   position: number | null;
   isTied: boolean;
+  tiedCount: number;
   totalScoreToPar: number | null;
   madeCut: boolean | null;
   isWithdrawn: boolean | null;
@@ -369,6 +384,7 @@ export async function getLiveScoresForGame(
   const out = new Map<string, {
     position: number | null;
     isTied: boolean;
+    tiedCount: number;
     totalScoreToPar: number | null;
     madeCut: boolean | null;
     isWithdrawn: boolean | null;
@@ -381,9 +397,11 @@ export async function getLiveScoresForGame(
     const result = resultMap.get(effectiveId);
     if (result) {
       const pos = result.computedPosition;
+      const count = pos != null ? (positionCounts.get(pos) || 1) : 1;
       out.set(pick.userId, {
         position: pos ?? null,
-        isTied: pos != null ? (positionCounts.get(pos) || 1) > 1 : false,
+        isTied: count > 1,
+        tiedCount: count,
         totalScoreToPar: result.totalScoreToPar,
         madeCut: result.madeCut,
         isWithdrawn: result.isWithdrawn,
