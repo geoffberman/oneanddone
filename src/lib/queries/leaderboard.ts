@@ -101,9 +101,10 @@ export async function getSeasonLeaderboard(
   options?: { currentTournamentId?: number }
 ): Promise<LeaderboardEntry[]> {
   const tid = options?.currentTournamentId;
+  // Start from gameMembers so ALL pool members appear, even those with no picks yet.
   const rows = await db
     .select({
-      userId: picks.userId,
+      userId: gameMembers.userId,
       userName: displayName,
       userImage: users.image,
       totalEarnings: sql<string>`COALESCE(SUM(CAST(${picks.earnings} AS NUMERIC)), 0)::text`,
@@ -114,10 +115,11 @@ export async function getSeasonLeaderboard(
         : sql<string>`'0'::text`,
       pickCount: sql<number>`COUNT(${picks.id})::int`,
     })
-    .from(picks)
-    .innerJoin(users, eq(picks.userId, users.id))
-    .where(eq(picks.gameId, gameId))
-    .groupBy(picks.userId, users.displayName, users.name, users.image)
+    .from(gameMembers)
+    .innerJoin(users, eq(gameMembers.userId, users.id))
+    .leftJoin(picks, and(eq(picks.gameId, gameMembers.gameId), eq(picks.userId, gameMembers.userId)))
+    .where(eq(gameMembers.gameId, gameId))
+    .groupBy(gameMembers.userId, users.displayName, users.name, users.image)
     .orderBy(
       sql`COALESCE(SUM(CAST(${picks.earnings} AS NUMERIC)), 0) DESC`
     );
@@ -169,17 +171,23 @@ export async function getWeeklyLeaderboard(
   gameId: number,
   tournamentId: number
 ): Promise<LeaderboardEntry[]> {
+  // Start from gameMembers so ALL pool members appear (with pick status indicator).
   const rows = await db
     .select({
-      userId: picks.userId,
+      userId: gameMembers.userId,
       userName: displayName,
       userImage: users.image,
       totalEarnings: sql<string>`COALESCE(CAST(${picks.earnings} AS NUMERIC), 0)::text`,
-      pickCount: sql<number>`1::int`,
+      pickCount: sql<number>`CASE WHEN ${picks.id} IS NOT NULL THEN 1 ELSE 0 END::int`,
     })
-    .from(picks)
-    .innerJoin(users, eq(picks.userId, users.id))
-    .where(and(eq(picks.gameId, gameId), eq(picks.tournamentId, tournamentId)))
+    .from(gameMembers)
+    .innerJoin(users, eq(gameMembers.userId, users.id))
+    .leftJoin(picks, and(
+      eq(picks.gameId, gameMembers.gameId),
+      eq(picks.userId, gameMembers.userId),
+      eq(picks.tournamentId, tournamentId)
+    ))
+    .where(eq(gameMembers.gameId, gameId))
     .orderBy(sql`COALESCE(CAST(${picks.earnings} AS NUMERIC), 0) DESC`);
 
   return rows.map((row, index) => ({
