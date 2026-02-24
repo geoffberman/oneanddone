@@ -7,7 +7,7 @@ import {
   updateSubGame,
   deleteSubGame,
 } from "@/lib/actions/sub-games";
-import { updateGameName } from "@/lib/actions/games";
+import { updateGameName, syncEarnings } from "@/lib/actions/games";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -55,6 +55,7 @@ export function SettingsClient({
   const [newDescription, setNewDescription] = useState("");
   const [newTournamentIds, setNewTournamentIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncingEarnings, setSyncingEarnings] = useState(false);
 
   async function handleSaveName() {
     if (!nameValue.trim() || nameValue.trim() === gameName) {
@@ -114,6 +115,24 @@ export function SettingsClient({
         ? prev.filter((id) => id !== tournamentId)
         : [...prev, tournamentId]
     );
+  }
+
+  async function handleSyncEarnings() {
+    setSyncingEarnings(true);
+    try {
+      const result = await syncEarnings(gameId);
+      if (result.success) {
+        toast.success("Earnings synced! Leaderboard updated.");
+        router.refresh();
+      } else {
+        const msg = "error" in result ? result.error : "Sync failed";
+        toast.error(msg ?? "Sync failed");
+      }
+    } catch {
+      toast.error("Sync failed");
+    } finally {
+      setSyncingEarnings(false);
+    }
   }
 
   return (
@@ -252,6 +271,30 @@ export function SettingsClient({
           </CardContent>
         </Card>
       )}
+
+      {/* Commissioner Tools */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Commissioner Tools</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <p className="mb-2 text-sm text-neutral-600">
+              Manually sync earnings from the SportsData API. Use this if the
+              leaderboard shows $0 after a tournament ends — the API sometimes
+              delays final payout data by several days.
+            </p>
+            <Button
+              onClick={handleSyncEarnings}
+              disabled={syncingEarnings}
+              variant="outline"
+              size="sm"
+            >
+              {syncingEarnings ? "Syncing..." : "Sync Earnings Now"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {initialSubGames.length === 0 && !showCreate ? (
         <Card>
