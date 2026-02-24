@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { tournaments, golfers, tournamentResults, picks } from "@/db/schema";
 import { eq, and, or, sql, inArray, gte } from "drizzle-orm";
 import { fetchLeaderboard } from "./client";
+import { getProjectedEarnings } from "@/lib/golf/payout-table";
 
 export async function syncResults() {
   const now = new Date();
@@ -175,6 +176,39 @@ export async function syncResults() {
 }
 
 async function updatePickEarnings(tournamentId: number) {
+  // Get the tournament purse for payout-table fallback when API returns $0 earnings
+  const [tournament] = await db
+    .select({ purse: tournaments.purse })
+    .from(tournaments)
+    .where(eq(tournaments.id, tournamentId))
+    .limit(1);
+  const purse = parseFloat(tournament?.purse ?? "0") || 0;
+
+  // Fetch all results for this tournament to compute positions and tie counts
+  const allResults = await db
+    .select({
+      golferId: tournamentResults.golferId,
+      earnings: tournamentResults.earnings,
+      totalScoreToPar: tournamentResults.totalScoreToPar,
+      isWithdrawn: tournamentResults.isWithdrawn,
+      computedPosition: sql<number>`RANK() OVER (
+        ORDER BY
+          CASE WHEN ${tournamentResults.isWithdrawn} THEN 1 ELSE 0 END,
+          ${tournamentResults.totalScoreToPar} ASC NULLS LAST
+      )`,
+    })
+    .from(tournamentResults)
+    .where(eq(tournamentResults.tournamentId, tournamentId));
+
+  // Count players at each position (for tie-splitting in payout calculation)
+  const positionCounts = new Map<number, number>();
+  for (const r of allResults) {
+    if (r.computedPosition != null) {
+      positionCounts.set(r.computedPosition, (positionCounts.get(r.computedPosition) || 0) + 1);
+    }
+  }
+  const resultMap = new Map(allResults.map((r) => [r.golferId, r]));
+
   const tournamentPicks = await db
     .select()
     .from(picks)
@@ -183,23 +217,19 @@ async function updatePickEarnings(tournamentId: number) {
   for (const pick of tournamentPicks) {
     // Use activeGolferId if resolve-picks has run, otherwise fall back to primary
     const activeGolferId = pick.activeGolferId ?? pick.primaryGolferId;
+    const result = resultMap.get(activeGolferId);
 
-    const [result] = await db
-      .select()
-      .from(tournamentResults)
-      .where(
-        and(
-          eq(tournamentResults.tournamentId, tournamentId),
-          eq(tournamentResults.golferId, activeGolferId)
-        )
-      )
-      .limit(1);
+    let earnings = parseFloat(result?.earnings || "0") || 0;
 
-    const earnings = result?.earnings || "0";
+    // If API returned $0 earnings but we have a valid position, compute from payout table
+    if (earnings === 0 && result && result.computedPosition > 0 && purse > 0 && !result.isWithdrawn) {
+      const tiedCount = positionCounts.get(result.computedPosition) || 1;
+      earnings = getProjectedEarnings(purse, result.computedPosition, tiedCount);
+    }
 
     await db
       .update(picks)
-      .set({ earnings, updatedAt: new Date() })
+      .set({ earnings: earnings.toString(), updatedAt: new Date() })
       .where(eq(picks.id, pick.id));
   }
 }
