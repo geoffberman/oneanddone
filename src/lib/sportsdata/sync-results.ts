@@ -1,10 +1,17 @@
 import { db } from "@/db";
 import { tournaments, golfers, tournamentResults, picks } from "@/db/schema";
-import { eq, and, or, sql, inArray } from "drizzle-orm";
+import { eq, and, or, sql, inArray, gte } from "drizzle-orm";
 import { fetchLeaderboard } from "./client";
 
 export async function syncResults() {
-  // Find in-progress or recently started tournaments
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  // Find tournaments that need syncing:
+  // - In-progress tournaments
+  // - Not-yet-over tournaments that have started
+  // - Recently completed tournaments (within 24h) to capture final earnings
+  //   (handles race condition where sync-schedule marks isOver before we sync final results)
   const activeTournaments = await db
     .select()
     .from(tournaments)
@@ -13,15 +20,16 @@ export async function syncResults() {
         eq(tournaments.canceled, false),
         or(
           eq(tournaments.isInProgress, true),
-          eq(tournaments.isOver, false)
+          eq(tournaments.isOver, false),
+          // Catch tournaments that were recently marked as over (final earnings sync)
+          and(eq(tournaments.isOver, true), gte(tournaments.updatedAt, oneDayAgo))
         )
       )
     );
 
   // Filter to tournaments that should have started (startDate <= now)
-  const now = new Date();
   const tournamentsToSync = activeTournaments.filter(
-    (t) => new Date(t.startDate) <= now && !t.isOver
+    (t) => new Date(t.startDate) <= now
   );
 
   const results = [];
@@ -32,14 +40,18 @@ export async function syncResults() {
         tournament.externalTournamentId
       );
 
-      // Update tournament status
+      // Update tournament status and purse (leaderboard API may have more accurate purse than Tournaments endpoint)
+      const updateFields: Record<string, unknown> = {
+        isOver: leaderboard.Tournament.IsOver,
+        isInProgress: leaderboard.Tournament.IsInProgress,
+        updatedAt: new Date(),
+      };
+      if (leaderboard.Tournament.Purse && leaderboard.Tournament.Purse > 0) {
+        updateFields.purse = leaderboard.Tournament.Purse.toString();
+      }
       await db
         .update(tournaments)
-        .set({
-          isOver: leaderboard.Tournament.IsOver,
-          isInProgress: leaderboard.Tournament.IsInProgress,
-          updatedAt: new Date(),
-        })
+        .set(updateFields)
         .where(eq(tournaments.id, tournament.id));
 
       const players = leaderboard.Players || [];

@@ -195,12 +195,12 @@ export function LeaderboardClient({
                               </span>
                             )}
                           </p>
-                        ) : (
+                        ) : isWeeklyBoard ? (
                           <p className="text-xs text-neutral-500 flex items-center gap-1">
                             <PickStatusIndicator hasPick={entry.hasCurrentPick ?? false} />
                             <span>{entry.hasCurrentPick ? "Picked" : "No pick"}</span>
                           </p>
-                        )}
+                        ) : null}
                       </div>
                     </div>
 
