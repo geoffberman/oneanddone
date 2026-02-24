@@ -11,29 +11,41 @@ export async function submitPick(
   gameId: number,
   tournamentId: number,
   primaryGolferId: number,
-  alternateGolferId: number | null
+  alternateGolferId: number | null,
+  targetUserId?: string  // manager proxy: submit on behalf of this member
 ) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
 
-  // Check user is a member of this game
-  const [membership] = await db
-    .select({ id: gameMembers.id })
+  const actingUserId = session.user.id;
+  const pickUserId = targetUserId ?? actingUserId;
+
+  // Check acting user is a member of this game
+  const [actingMembership] = await db
+    .select({ id: gameMembers.id, role: gameMembers.role })
     .from(gameMembers)
-    .where(
-      and(
-        eq(gameMembers.gameId, gameId),
-        eq(gameMembers.userId, session.user.id)
-      )
-    )
+    .where(and(eq(gameMembers.gameId, gameId), eq(gameMembers.userId, actingUserId)))
     .limit(1);
 
-  if (!membership) throw new Error("You are not a member of this game");
+  if (!actingMembership) throw new Error("You are not a member of this game");
 
-  // Validate the pick
+  // If picking for someone else, must be a manager
+  if (pickUserId !== actingUserId) {
+    if (actingMembership.role !== "manager") {
+      throw new Error("Only managers can submit picks for other members");
+    }
+    const [targetMembership] = await db
+      .select({ id: gameMembers.id })
+      .from(gameMembers)
+      .where(and(eq(gameMembers.gameId, gameId), eq(gameMembers.userId, pickUserId)))
+      .limit(1);
+    if (!targetMembership) throw new Error("That user is not a member of this game");
+  }
+
+  // Validate the pick against the target user's history
   const validation = await validatePick({
     gameId,
-    userId: session.user.id,
+    userId: pickUserId,
     tournamentId,
     primaryGolferId,
     alternateGolferId,
@@ -47,24 +59,14 @@ export async function submitPick(
   const [existingPick] = await db
     .select({ id: picks.id })
     .from(picks)
-    .where(
-      and(
-        eq(picks.gameId, gameId),
-        eq(picks.userId, session.user.id),
-        eq(picks.tournamentId, tournamentId)
-      )
-    )
+    .where(and(eq(picks.gameId, gameId), eq(picks.userId, pickUserId), eq(picks.tournamentId, tournamentId)))
     .limit(1);
 
   let pick;
   if (existingPick) {
     const [updated] = await db
       .update(picks)
-      .set({
-        primaryGolferId,
-        alternateGolferId,
-        updatedAt: new Date(),
-      })
+      .set({ primaryGolferId, alternateGolferId, updatedAt: new Date() })
       .where(eq(picks.id, existingPick.id))
       .returning();
     pick = updated;
@@ -73,7 +75,7 @@ export async function submitPick(
       .insert(picks)
       .values({
         gameId,
-        userId: session.user.id,
+        userId: pickUserId,
         tournamentId,
         primaryGolferId,
         alternateGolferId,
@@ -88,9 +90,11 @@ export async function submitPick(
   return pick;
 }
 
-export async function getUserPick(gameId: number, tournamentId: number) {
+export async function getUserPick(gameId: number, tournamentId: number, forUserId?: string) {
   const session = await auth();
   if (!session?.user?.id) return null;
+
+  const userId = forUserId ?? session.user.id;
 
   const [pick] = await db
     .select({
@@ -107,7 +111,7 @@ export async function getUserPick(gameId: number, tournamentId: number) {
     .where(
       and(
         eq(picks.gameId, gameId),
-        eq(picks.userId, session.user.id),
+        eq(picks.userId, userId),
         eq(picks.tournamentId, tournamentId)
       )
     )
