@@ -35,6 +35,12 @@ interface FieldEntry {
   isUsed: boolean;
 }
 
+interface Member {
+  userId: string;
+  userName: string | null;
+  userDisplayName: string | null;
+}
+
 interface PickSelectionClientProps {
   gameId: number;
   tournamentId: number;
@@ -45,6 +51,9 @@ interface PickSelectionClientProps {
     alternateGolferId: number | null;
   } | null;
   isLocked: boolean;
+  isManager: boolean;
+  targetUserId: string;
+  members: Member[];
 }
 
 function GolferCard({
@@ -146,6 +155,9 @@ export function PickSelectionClient({
   field,
   existingPick,
   isLocked,
+  isManager,
+  targetUserId,
+  members,
 }: PickSelectionClientProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -212,8 +224,12 @@ export function PickSelectionClient({
     if (!primaryId) return;
     setSubmitting(true);
     try {
-      await submitPick(gameId, tournamentId, primaryId, alternateId);
-      toast.success("Pick submitted successfully!");
+      await submitPick(gameId, tournamentId, primaryId, alternateId, targetUserId);
+      toast.success(
+        targetName
+          ? `Pick submitted for ${targetName}!`
+          : "Pick submitted successfully!"
+      );
       setConfirmOpen(false);
       router.push(`/games/${gameId}`);
       router.refresh();
@@ -226,8 +242,39 @@ export function PickSelectionClient({
     }
   }
 
+  const targetMember = members.find((m) => m.userId === targetUserId);
+  const targetName = targetMember
+    ? (targetMember.userDisplayName ?? targetMember.userName ?? "Member")
+    : null;
+
   return (
     <div className="space-y-4">
+      {/* Manager: member selector */}
+      {isManager && members.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex items-center gap-3 py-3">
+            <span className="shrink-0 text-sm font-medium text-amber-800">
+              Picking for:
+            </span>
+            <select
+              value={targetUserId}
+              onChange={(e) => {
+                router.push(
+                  `/games/${gameId}/picks/${tournamentId}?for=${e.target.value}`
+                );
+              }}
+              className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+            >
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.userDisplayName ?? m.userName ?? m.userId}
+                </option>
+              ))}
+            </select>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Pick Slots */}
       <div className="grid gap-3 sm:grid-cols-2">
         <Card
@@ -411,9 +458,11 @@ export function PickSelectionClient({
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Your Pick</DialogTitle>
+            <DialogTitle>
+              {targetName ? `Confirm Pick for ${targetName}` : "Confirm Your Pick"}
+            </DialogTitle>
             <DialogDescription>
-              Once the tournament starts, your pick will be locked.
+              Once the tournament starts, picks will be locked.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">

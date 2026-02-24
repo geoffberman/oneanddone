@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { tournaments } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getUserRole } from "@/lib/queries/games";
+import { getUserRole, getGameMembers } from "@/lib/queries/games";
 import { getTournamentField } from "@/lib/queries/tournaments";
 import { getUserPick } from "@/lib/actions/picks";
 import { formatDate, formatDeadline } from "@/lib/utils";
@@ -12,10 +12,13 @@ import { TournamentInfoButton } from "@/components/tournament-info-button";
 
 export default async function PickSelectionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ gameId: string; tournamentId: string }>;
+  searchParams: Promise<{ for?: string }>;
 }) {
   const { gameId: gidStr, tournamentId: tidStr } = await params;
+  const { for: forParam } = await searchParams;
   const gameId = parseInt(gidStr);
   const tournamentId = parseInt(tidStr);
 
@@ -26,6 +29,10 @@ export default async function PickSelectionPage({
   const role = await getUserRole(gameId, userId);
   if (!role) notFound();
 
+  const isManager = role === "manager";
+  // Managers can pick on behalf of any member via ?for=userId
+  const targetUserId = isManager && forParam ? forParam : userId;
+
   const [tournament] = await db
     .select()
     .from(tournaments)
@@ -34,12 +41,11 @@ export default async function PickSelectionPage({
 
   if (!tournament) notFound();
 
-  const field = await getTournamentField(tournamentId, {
-    gameId,
-    userId,
-  });
-
-  const existingPick = await getUserPick(gameId, tournamentId);
+  const [field, existingPick, members] = await Promise.all([
+    getTournamentField(tournamentId, { gameId, userId: targetUserId }),
+    getUserPick(gameId, tournamentId, targetUserId),
+    isManager ? getGameMembers(gameId) : Promise.resolve([]),
+  ]);
 
   const lockTime = tournament.firstTeeTime || tournament.startDate;
   const isLocked = lockTime ? new Date() >= new Date(lockTime) : false;
@@ -82,6 +88,13 @@ export default async function PickSelectionPage({
             : null
         }
         isLocked={isLocked}
+        isManager={isManager}
+        targetUserId={targetUserId}
+        members={members.map((m) => ({
+          userId: m.userId,
+          userName: m.userName,
+          userDisplayName: m.userDisplayName,
+        }))}
       />
     </div>
   );
