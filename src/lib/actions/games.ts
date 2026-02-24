@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { games, gameMembers, seasons, users, passwordResetTokens, picks, usedGolfers } from "@/db/schema";
+import { games, gameMembers, seasons, users, passwordResetTokens, picks, usedGolfers, tournaments } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { generateInviteCode } from "@/lib/utils/invite-code";
 import { sendMemberAddedEmail, sendInviteEmail, sendPasswordResetEmail } from "@/lib/email";
@@ -612,5 +612,46 @@ export async function setMemberDisplayName(
       success: false,
       error: err instanceof Error ? err.message : "Something went wrong. Please try again.",
     };
+  }
+}
+
+// Manager action: force-sync earnings for all completed tournaments.
+// Resets the sync window so the cron picks up tournaments where API earnings were delayed.
+export async function syncEarnings(gameId: number) {
+  const session = await auth();
+  if (!session?.user?.id) return { success: false, error: "Not authenticated" };
+
+  const [membership] = await db
+    .select({ role: gameMembers.role })
+    .from(gameMembers)
+    .where(and(eq(gameMembers.gameId, gameId), eq(gameMembers.userId, session.user.id)))
+    .limit(1);
+
+  if (!membership || membership.role !== "manager") {
+    return { success: false, error: "Not authorized" };
+  }
+
+  try {
+    // Bring all completed tournaments back into the 7-day sync window
+    await db.execute(sql`UPDATE tournaments SET updated_at = NOW() WHERE is_over = true`);
+
+    const { syncResults } = await import("@/lib/sportsdata/sync-results");
+    const results = await syncResults();
+
+    const synced = results.filter((r: { error?: string }) => !r.error);
+    const failed = results.filter((r: { error?: string }) => r.error);
+
+    revalidatePath(`/games/${gameId}/leaderboard`);
+
+    return {
+      success: true,
+      message: synced.length > 0
+        ? `Synced ${synced.length} tournament(s). Leaderboard updated.`
+        : "No tournaments needed syncing.",
+      ...(failed.length > 0 ? { warnings: failed.map((r: { tournament: string }) => r.tournament) } : {}),
+    };
+  } catch (err) {
+    console.error("[SyncEarnings]", err);
+    return { success: false, error: err instanceof Error ? err.message : "Sync failed" };
   }
 }

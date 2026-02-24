@@ -426,6 +426,80 @@ export async function POST(req: Request) {
       return NextResponse.json(diag);
     }
 
+    if (action === "earnings-debug") {
+      // Show actual DB state: tournament purse, tournamentResults.earnings, picks.earnings
+      const out: Record<string, unknown> = {};
+
+      try {
+        out.tournaments = (await db.execute(sql`
+          SELECT id, name, is_over, is_in_progress, purse, updated_at
+          FROM tournaments ORDER BY start_date DESC LIMIT 10
+        `)).rows;
+      } catch (e) { out.tournamentsError = String(e); }
+
+      try {
+        out.sampleResults = (await db.execute(sql`
+          SELECT tr.tournament_id, t.name as tournament_name,
+                 g.first_name, g.last_name, tr.earnings, tr.total_score_to_par, tr.position
+          FROM tournament_results tr
+          JOIN tournaments t ON t.id = tr.tournament_id
+          JOIN golfers g ON g.id = tr.golfer_id
+          ORDER BY t.start_date DESC, tr.position ASC NULLS LAST
+          LIMIT 10
+        `)).rows;
+      } catch (e) { out.sampleResultsError = String(e); }
+
+      try {
+        out.picksEarnings = (await db.execute(sql`
+          SELECT p.tournament_id, t.name as tournament_name,
+                 COUNT(*) as pick_count,
+                 SUM(CAST(p.earnings AS NUMERIC)) as total_earnings,
+                 COUNT(CASE WHEN CAST(p.earnings AS NUMERIC) = 0 THEN 1 END) as zero_count
+          FROM picks p
+          JOIN tournaments t ON t.id = p.tournament_id
+          GROUP BY p.tournament_id, t.name
+          ORDER BY t.start_date DESC
+        `)).rows;
+      } catch (e) { out.picksEarningsError = String(e); }
+
+      return NextResponse.json(out);
+    }
+
+    if (action === "force-fix-earnings") {
+      // Force-run full earnings sync for all completed tournaments, bypassing the 7-day window.
+      // Use this to backfill picks.earnings after delayed API earnings data becomes available.
+      const out: Record<string, unknown> = {};
+
+      try {
+        // Bring all over tournaments back into the sync window by resetting updated_at
+        await db.execute(sql`UPDATE tournaments SET updated_at = NOW() WHERE is_over = true`);
+        out.resetUpdatedAt = "done";
+      } catch (e) {
+        out.resetError = String(e);
+        return NextResponse.json(out);
+      }
+
+      try {
+        const { syncResults } = await import("@/lib/sportsdata/sync-results");
+        out.syncResults = await syncResults();
+      } catch (e) { out.syncError = String(e); }
+
+      try {
+        out.picksEarningsAfter = (await db.execute(sql`
+          SELECT p.tournament_id, t.name as tournament_name,
+                 COUNT(*) as pick_count,
+                 SUM(CAST(p.earnings AS NUMERIC)) as total_earnings,
+                 COUNT(CASE WHEN CAST(p.earnings AS NUMERIC) = 0 THEN 1 END) as zero_count
+          FROM picks p
+          JOIN tournaments t ON t.id = p.tournament_id
+          GROUP BY p.tournament_id, t.name
+          ORDER BY t.start_date DESC
+        `)).rows;
+      } catch (e) { out.afterError = String(e); }
+
+      return NextResponse.json(out);
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
     console.error("[Admin Diagnose]", err);
