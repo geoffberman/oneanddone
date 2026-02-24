@@ -6,13 +6,14 @@ import { getProjectedEarnings } from "@/lib/golf/payout-table";
 
 export async function syncResults() {
   const now = new Date();
-  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  // 7-day window: SportsData API often delays final earnings by several days after
+  // the tournament ends, so the previous 24h window was too narrow to capture them.
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   // Find tournaments that need syncing:
   // - In-progress tournaments
   // - Not-yet-over tournaments that have started
-  // - Recently completed tournaments (within 24h) to capture final earnings
-  //   (handles race condition where sync-schedule marks isOver before we sync final results)
+  // - Recently completed tournaments (within 7 days) to capture final/delayed earnings
   const activeTournaments = await db
     .select()
     .from(tournaments)
@@ -22,8 +23,7 @@ export async function syncResults() {
         or(
           eq(tournaments.isInProgress, true),
           eq(tournaments.isOver, false),
-          // Catch tournaments that were recently marked as over (final earnings sync)
-          and(eq(tournaments.isOver, true), gte(tournaments.updatedAt, oneDayAgo))
+          and(eq(tournaments.isOver, true), gte(tournaments.updatedAt, sevenDaysAgo))
         )
       )
     );
@@ -175,7 +175,7 @@ export async function syncResults() {
   return results;
 }
 
-async function updatePickEarnings(tournamentId: number) {
+export async function updatePickEarnings(tournamentId: number) {
   // Get the tournament purse for payout-table fallback when API returns $0 earnings
   const [tournament] = await db
     .select({ purse: tournaments.purse })
