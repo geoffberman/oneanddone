@@ -116,9 +116,13 @@ export default async function LeaderboardPage({
           // Weekly board: show live/projected earnings for this tournament
           totalEarnings = liveEarnings > 0 ? liveEarnings.toFixed(0) : e.totalEarnings;
         } else if (isSeason) {
-          // Season board: (total season – cached current tournament) + real-time live earnings
-          const base = (parseFloat(e.totalEarnings) || 0) - (parseFloat(e.currentTournamentEarnings ?? "0") || 0);
-          totalEarnings = (base + liveEarnings).toFixed(0);
+          // Season board: replace cached current-tournament earnings with live earnings.
+          // When the API returns $0 (common even for completed tournaments), fall back to
+          // the cached picks.earnings value so we don't wipe out payout-table earnings.
+          const cachedCurrent = parseFloat(e.currentTournamentEarnings ?? "0") || 0;
+          const base = (parseFloat(e.totalEarnings) || 0) - cachedCurrent;
+          const effectiveCurrent = liveEarnings > 0 ? liveEarnings : cachedCurrent;
+          totalEarnings = (base + effectiveCurrent).toFixed(0);
         } else {
           totalEarnings = e.totalEarnings;
         }
