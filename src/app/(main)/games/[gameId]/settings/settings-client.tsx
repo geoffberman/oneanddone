@@ -38,6 +38,7 @@ interface SettingsClientProps {
   gameName: string;
   subGames: SubGame[];
   tournaments: Tournament[];
+  memberEmails: string[];
 }
 
 export function SettingsClient({
@@ -45,6 +46,7 @@ export function SettingsClient({
   gameName,
   subGames: initialSubGames,
   tournaments,
+  memberEmails,
 }: SettingsClientProps) {
   const router = useRouter();
   const [editingName, setEditingName] = useState(false);
@@ -277,7 +279,7 @@ export function SettingsClient({
         <CardHeader>
           <CardTitle className="text-base">Commissioner Tools</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-5">
           <div>
             <p className="mb-2 text-sm text-neutral-600">
               Manually sync earnings from the SportsData API. Use this if the
@@ -293,6 +295,43 @@ export function SettingsClient({
               {syncingEarnings ? "Syncing..." : "Sync Earnings Now"}
             </Button>
           </div>
+
+          {memberEmails.length > 0 && (
+            <div>
+              <p className="mb-2 text-sm font-medium">Member Emails</p>
+              <p className="mb-3 text-sm text-neutral-600">
+                {memberEmails.length} member
+                {memberEmails.length !== 1 ? "s" : ""} with email addresses.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard
+                      .writeText(memberEmails.join(", "))
+                      .then(() => toast.success("Emails copied to clipboard!"))
+                      .catch(() => toast.error("Failed to copy"));
+                  }}
+                >
+                  Copy to Clipboard
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const bcc = memberEmails.join(",");
+                    window.open(
+                      `https://mail.google.com/mail/?view=cm&bcc=${encodeURIComponent(bcc)}`,
+                      "_blank"
+                    );
+                  }}
+                >
+                  Open in Gmail
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

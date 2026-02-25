@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { notFound } from "next/navigation";
-import { getGameById, getUserRole } from "@/lib/queries/games";
+import { getGameById, getUserRole, getGameMembers } from "@/lib/queries/games";
 import { getSubGames } from "@/lib/actions/sub-games";
 import { getSeasonTournaments, getLatestSeason } from "@/lib/queries/tournaments";
 import { db } from "@/db";
@@ -32,9 +32,10 @@ export default async function SettingsPage({
   ]);
   if (!game || !role || role !== "manager") notFound();
 
-  const [subGamesList, seasonTournaments] = await Promise.all([
+  const [subGamesList, seasonTournaments, members] = await Promise.all([
     getSubGames(gameId),
     getSeasonTournaments(game.seasonId),
+    getGameMembers(gameId),
   ]);
 
   // Get tournament IDs for each sub-game
@@ -83,6 +84,9 @@ export default async function SettingsPage({
           name: t.name,
           startDate: t.startDate.toISOString(),
         }))}
+        memberEmails={members
+          .map((m) => m.userEmail)
+          .filter((e): e is string => !!e)}
       />
     </div>
   );
