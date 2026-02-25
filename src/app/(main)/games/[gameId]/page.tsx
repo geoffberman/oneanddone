@@ -25,6 +25,7 @@ import {
   Mail,
   Users,
   ChevronRight,
+  MessageSquarePlus,
 } from "lucide-react";
 import { AnnouncementForm } from "./announcement-form";
 import { EmailMembersForm } from "./email-members-form";
@@ -290,6 +291,20 @@ export default async function GameHomePage({
           </CardContent>
         </Card>
       )}
+
+      {/* Feedback */}
+      <div className="text-center">
+        <Button asChild variant="ghost" size="sm" className="text-neutral-500">
+          <a
+            href="https://docs.google.com/forms/d/e/1FAIpQLSfi-LMAbElsNFgDfZ4j_JBN1VLpR7e3UzjkV4r4cfaZZRbmXA/viewform?usp=header"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <MessageSquarePlus className="mr-1.5 h-4 w-4" />
+            Send Feedback
+          </a>
+        </Button>
+      </div>
     </div>
   );
 }
