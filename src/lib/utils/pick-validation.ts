@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { tournaments, tournamentFields, usedGolfers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getTournamentLockTime } from "@/lib/utils";
 
 export interface PickValidationResult {
   valid: boolean;
@@ -37,8 +38,8 @@ export async function validatePick(params: {
   }
 
   const now = new Date();
-  const lockTime = tournament.firstTeeTime || tournament.startDate;
-  if (lockTime && now >= new Date(lockTime)) {
+  const lockTime = getTournamentLockTime(tournament);
+  if (now >= lockTime) {
     return { valid: false, error: "Picks are locked for this tournament" };
   }
 

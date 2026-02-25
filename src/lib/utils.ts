@@ -24,6 +24,20 @@ export function formatDate(date: Date | string): string {
   });
 }
 
+// Returns the effective lock time for picks. Uses firstTeeTime when available.
+// Falls back to startDate at noon UTC — startDate is stored as midnight UTC,
+// which is 4 PM PST the evening before; noon UTC keeps the fallback on the
+// actual start day at a reasonable morning hour (4 AM PST / 7 AM EST).
+export function getTournamentLockTime(tournament: {
+  firstTeeTime: Date | string | null;
+  startDate: Date | string;
+}): Date {
+  if (tournament.firstTeeTime) return new Date(tournament.firstTeeTime);
+  const d = new Date(tournament.startDate);
+  d.setUTCHours(12, 0, 0, 0);
+  return d;
+}
+
 // Format a picks deadline with time and Pacific timezone, e.g. "February 19 at 6:00 AM PST"
 export function formatDeadline(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;

@@ -56,6 +56,7 @@ export function SettingsClient({
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newTournamentIds, setNewTournamentIds] = useState<number[]>([]);
+  const [gmailAccountIndex, setGmailAccountIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [syncingEarnings, setSyncingEarnings] = useState(false);
 
@@ -303,7 +304,7 @@ export function SettingsClient({
                 {memberEmails.length} member
                 {memberEmails.length !== 1 ? "s" : ""} with email addresses.
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -316,19 +317,34 @@ export function SettingsClient({
                 >
                   Copy to Clipboard
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const bcc = memberEmails.join(",");
-                    window.open(
-                      `https://mail.google.com/mail/?view=cm&bcc=${encodeURIComponent(bcc)}`,
-                      "_blank"
-                    );
-                  }}
-                >
-                  Open in Gmail
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const bcc = memberEmails.join(",");
+                      window.open(
+                        `https://mail.google.com/mail/u/${gmailAccountIndex}/?view=cm&bcc=${encodeURIComponent(bcc)}`,
+                        "_blank"
+                      );
+                    }}
+                  >
+                    Open in Gmail
+                  </Button>
+                  <select
+                    value={gmailAccountIndex}
+                    onChange={(e) =>
+                      setGmailAccountIndex(Number(e.target.value))
+                    }
+                    className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-600"
+                    title="Gmail account"
+                  >
+                    <option value={0}>Account 1</option>
+                    <option value={1}>Account 2</option>
+                    <option value={2}>Account 3</option>
+                    <option value={3}>Account 4</option>
+                  </select>
+                </div>
               </div>
             </div>
           )}

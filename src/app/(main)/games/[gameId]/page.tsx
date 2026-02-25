@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDate, formatDeadline } from "@/lib/utils";
+import { formatDate, formatDeadline, getTournamentLockTime } from "@/lib/utils";
 import {
   Trophy,
   Calendar,
@@ -82,7 +82,7 @@ export default async function GameHomePage({
 
   const isManager = role === "manager";
   const pickDeadline = currentTournament
-    ? currentTournament.firstTeeTime || currentTournament.startDate
+    ? getTournamentLockTime(currentTournament)
     : null;
 
   return (

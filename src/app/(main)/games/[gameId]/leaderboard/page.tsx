@@ -13,6 +13,7 @@ import {
 } from "@/lib/queries/leaderboard";
 import { getSubGames } from "@/lib/actions/sub-games";
 import { getProjectedEarnings } from "@/lib/golf/payout-table";
+import { getTournamentLockTime } from "@/lib/utils";
 import { LeaderboardClient } from "./leaderboard-client";
 
 export default async function LeaderboardPage({
@@ -86,10 +87,9 @@ export default async function LeaderboardPage({
   }
 
   // After picks lock, attach each member's current tournament pick + live scores
-  const lockTime = currentTournament
-    ? currentTournament.firstTeeTime || currentTournament.startDate
-    : null;
-  const isLocked = lockTime ? new Date() >= new Date(lockTime) : false;
+  const isLocked = currentTournament
+    ? new Date() >= getTournamentLockTime(currentTournament)
+    : false;
   const isInProgress = currentTournament?.isInProgress ?? false;
   const purse = parseFloat(currentTournament?.purse ?? "0") || 0;
 

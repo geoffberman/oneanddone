@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { getUserRole, getGameMembers } from "@/lib/queries/games";
 import { getTournamentField } from "@/lib/queries/tournaments";
 import { getUserPick } from "@/lib/actions/picks";
-import { formatDate, formatDeadline } from "@/lib/utils";
+import { formatDate, formatDeadline, getTournamentLockTime } from "@/lib/utils";
 import { PickSelectionClient } from "./pick-selection-client";
 import { TournamentInfoButton } from "@/components/tournament-info-button";
 
@@ -47,8 +47,8 @@ export default async function PickSelectionPage({
     isManager ? getGameMembers(gameId) : Promise.resolve([]),
   ]);
 
-  const lockTime = tournament.firstTeeTime || tournament.startDate;
-  const isLocked = lockTime ? new Date() >= new Date(lockTime) : false;
+  const lockTime = getTournamentLockTime(tournament);
+  const isLocked = new Date() >= lockTime;
 
   return (
     <div className="space-y-6">
