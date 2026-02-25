@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Trophy, Calendar, Clock, Check } from "lucide-react";
-import { formatDeadline } from "@/lib/utils";
+import { formatDeadline, getTournamentLockTime } from "@/lib/utils";
 import { AccessCodeForm } from "./access-code-form";
 
 export default async function DashboardPage() {
@@ -27,7 +27,7 @@ export default async function DashboardPage() {
     : {};
 
   const pickDeadline = currentTournament
-    ? currentTournament.firstTeeTime || currentTournament.startDate
+    ? getTournamentLockTime(currentTournament)
     : null;
 
   return (

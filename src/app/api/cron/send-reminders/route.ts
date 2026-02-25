@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { tournaments, games, gameMembers, users, picks, seasons } from "@/db/schema";
 import { eq, and, gte, lte, isNull, notInArray } from "drizzle-orm";
 import { sendPicksReminderEmail } from "@/lib/email";
+import { getTournamentLockTime } from "@/lib/utils";
 
 // Runs daily at 8 AM ET. Finds tournaments whose picks deadline falls in the
 // next 20–28 hours (i.e., roughly 24 hours away) and emails members who
@@ -37,9 +38,7 @@ export async function GET(request: NextRequest) {
       );
 
     const upcoming = allTournaments.filter((t) => {
-      const deadline = t.firstTeeTime || t.startDate;
-      if (!deadline) return false;
-      const d = new Date(deadline);
+      const d = getTournamentLockTime(t);
       return d >= windowStart && d <= windowEnd;
     });
 
@@ -60,7 +59,7 @@ export async function GET(request: NextRequest) {
     let totalSent = 0;
 
     for (const tournament of upcoming) {
-      const deadline = new Date(tournament.firstTeeTime || tournament.startDate);
+      const deadline = getTournamentLockTime(tournament);
 
       // Games in the same season as this tournament
       const relevantGames = allGames.filter(
