@@ -26,8 +26,8 @@ import {
   deleteCustomLeaderboard,
   shareCustomLeaderboard,
   removeShare,
-  type CustomLeaderboardSummary,
 } from "@/lib/actions/custom-leaderboards";
+import type { CustomLeaderboardSummary } from "@/lib/queries/custom-leaderboards";
 
 interface Member {
   userId: string;
