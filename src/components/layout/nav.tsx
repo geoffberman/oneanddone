@@ -16,6 +16,14 @@ interface NavProps {
 export function Nav({ user }: NavProps) {
   const pathname = usePathname();
 
+  // When inside a game, "Dashboard" navigates to that league's home page
+  const gameMatch = pathname.match(/^\/games\/(\d+)/);
+  const gameId = gameMatch ? gameMatch[1] : null;
+  const dashboardHref = gameId ? `/games/${gameId}` : "/dashboard";
+  const isDashboardActive = gameId
+    ? pathname === `/games/${gameId}`
+    : pathname === "/dashboard";
+
   return (
     <header className="border-b border-neutral-200 bg-white">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
@@ -35,10 +43,10 @@ export function Nav({ user }: NavProps) {
           </Link>
           <nav className="flex items-center gap-4 text-sm">
             <Link
-              href="/dashboard"
+              href={dashboardHref}
               className={cn(
                 "transition-colors hover:text-neutral-900",
-                pathname === "/dashboard"
+                isDashboardActive
                   ? "font-medium text-neutral-900"
                   : "text-neutral-500"
               )}

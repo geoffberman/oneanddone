@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/auth";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
@@ -9,6 +10,8 @@ import { getUserPick } from "@/lib/actions/picks";
 import { formatDate, formatDeadline, getTournamentLockTime } from "@/lib/utils";
 import { PickSelectionClient } from "./pick-selection-client";
 import { TournamentInfoButton } from "@/components/tournament-info-button";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft } from "lucide-react";
 
 export default async function PickSelectionPage({
   params,
@@ -52,6 +55,13 @@ export default async function PickSelectionPage({
 
   return (
     <div className="space-y-6">
+      <Button asChild variant="ghost" size="sm" className="-ml-2 text-neutral-500">
+        <Link href={`/games/${gameId}`}>
+          <ChevronLeft className="mr-1 h-4 w-4" />
+          League Home
+        </Link>
+      </Button>
+
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold">{tournament.name}</h1>
