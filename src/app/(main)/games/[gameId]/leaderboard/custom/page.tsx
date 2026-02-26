@@ -18,13 +18,20 @@ export default async function CustomLeaderboardsPage({
   if (!session?.user?.id) notFound();
   const userId = session.user.id;
 
-  const [game, role, members, customLbs] = await Promise.all([
+  const [game, role, members] = await Promise.all([
     getGameById(gameId),
     getUserRole(gameId, userId),
     getGameMembers(gameId),
-    getCustomLeaderboards(gameId, userId),
   ]);
   if (!game || !role) notFound();
+
+  let customLbs: Awaited<ReturnType<typeof getCustomLeaderboards>> = [];
+  try {
+    customLbs = await getCustomLeaderboards(gameId, userId);
+  } catch (err) {
+    console.error("[CustomLeaderboardsPage] getCustomLeaderboards failed:", err);
+    throw err; // re-throw so error boundary still catches it with the real message in logs
+  }
 
   return (
     <div className="space-y-6">
