@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getGameById, getUserRole, getGameMembers } from "@/lib/queries/games";
-import { getCustomLeaderboards } from "@/lib/actions/custom-leaderboards";
+import { getCustomLeaderboards } from "@/lib/queries/custom-leaderboards";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
 import { CustomLeaderboardsClient } from "./custom-leaderboards-client";
