@@ -49,12 +49,9 @@ export interface CustomLeaderboardSummary {
 }
 
 export async function getCustomLeaderboards(
-  gameId: number
+  gameId: number,
+  userId: string
 ): Promise<CustomLeaderboardSummary[]> {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Not authenticated");
-  const userId = session.user.id;
-
   // Leaderboards the user owns or that are shared with them
   const lbs = await db
     .selectDistinct({

@@ -16,13 +16,10 @@ interface NavProps {
 export function Nav({ user }: NavProps) {
   const pathname = usePathname();
 
-  // When inside a game, "Dashboard" navigates to that league's home page
+  // Show "Dashboard" link only when inside a game; it points to that league's home page
   const gameMatch = pathname.match(/^\/games\/(\d+)/);
   const gameId = gameMatch ? gameMatch[1] : null;
-  const dashboardHref = gameId ? `/games/${gameId}` : "/dashboard";
-  const isDashboardActive = gameId
-    ? pathname === `/games/${gameId}`
-    : pathname === "/dashboard";
+  const isDashboardActive = gameId ? pathname === `/games/${gameId}` : false;
 
   return (
     <header className="border-b border-neutral-200 bg-white">
@@ -41,19 +38,21 @@ export function Nav({ user }: NavProps) {
             />
             <span className="hidden sm:inline">One and Done</span>
           </Link>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link
-              href={dashboardHref}
-              className={cn(
-                "transition-colors hover:text-neutral-900",
-                isDashboardActive
-                  ? "font-medium text-neutral-900"
-                  : "text-neutral-500"
-              )}
-            >
-              Dashboard
-            </Link>
-          </nav>
+          {gameId && (
+            <nav className="flex items-center gap-4 text-sm">
+              <Link
+                href={`/games/${gameId}`}
+                className={cn(
+                  "transition-colors hover:text-neutral-900",
+                  isDashboardActive
+                    ? "font-medium text-neutral-900"
+                    : "text-neutral-500"
+                )}
+              >
+                Dashboard
+              </Link>
+            </nav>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="hidden text-sm text-neutral-600 sm:inline">
