@@ -169,6 +169,7 @@ export function PickSelectionClient({
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
   const [selectingSlot, setSelectingSlot] = useState<
     "primary" | "alternate"
   >("primary");
@@ -252,25 +253,44 @@ export function PickSelectionClient({
       {/* Manager: member selector */}
       {isManager && members.length > 0 && (
         <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="flex items-center gap-3 py-3">
-            <span className="shrink-0 text-sm font-medium text-amber-800">
-              Picking for:
-            </span>
-            <select
-              value={targetUserId}
-              onChange={(e) => {
-                router.push(
-                  `/games/${gameId}/picks/${tournamentId}?for=${e.target.value}`
-                );
-              }}
-              className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-            >
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.userDisplayName ?? m.userName ?? m.userId}
-                </option>
-              ))}
-            </select>
+          <CardContent className="space-y-2 py-3">
+            <div className="flex items-center gap-3">
+              <span className="shrink-0 text-sm font-medium text-amber-800">
+                Picking for:
+              </span>
+              <select
+                value={targetUserId}
+                onChange={(e) => {
+                  router.push(
+                    `/games/${gameId}/picks/${tournamentId}?for=${e.target.value}`
+                  );
+                }}
+                className="flex-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              >
+                {members
+                  .filter((m) => {
+                    if (!memberSearch.trim()) return true;
+                    const q = memberSearch.toLowerCase();
+                    const name = (m.userDisplayName ?? m.userName ?? "").toLowerCase();
+                    return name.includes(q) || m.userId === targetUserId;
+                  })
+                  .map((m) => (
+                    <option key={m.userId} value={m.userId}>
+                      {m.userDisplayName ?? m.userName ?? m.userId}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-amber-500" />
+              <input
+                type="text"
+                placeholder="Search by team name…"
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+                className="w-full rounded-md border border-amber-200 bg-white py-1.5 pl-7 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-amber-400 placeholder:text-neutral-400"
+              />
+            </div>
           </CardContent>
         </Card>
       )}

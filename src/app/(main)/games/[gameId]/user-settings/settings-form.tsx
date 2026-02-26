@@ -60,16 +60,16 @@ export function SettingsForm({
           htmlFor="displayName"
           className="mb-1.5 block text-sm font-medium"
         >
-          Display Name
+          Team Name
         </label>
         <Input
           id="displayName"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="How you appear on leaderboards"
+          placeholder="Your team name on leaderboards"
         />
         <p className="mt-1 text-xs text-neutral-400">
-          This name will be shown on leaderboards and pick history.
+          Your team name is shown on leaderboards and pick history.
         </p>
       </div>
       <Button

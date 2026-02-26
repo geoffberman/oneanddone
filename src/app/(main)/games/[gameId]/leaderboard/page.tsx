@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { auth } from "@/auth";
 import { notFound } from "next/navigation";
 import { getGameById, getUserRole } from "@/lib/queries/games";
+import { Button } from "@/components/ui/button";
 import { getCurrentTournament } from "@/lib/queries/tournaments";
 import {
   getSeasonLeaderboard,
@@ -206,6 +208,14 @@ export default async function LeaderboardPage({
         isLocked={isLocked}
         isInProgress={isInProgress}
       />
+
+      <div className="text-center">
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/games/${gameId}/leaderboard/custom`}>
+            Custom Leaderboards
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }

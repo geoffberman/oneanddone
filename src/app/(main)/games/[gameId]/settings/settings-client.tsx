@@ -31,6 +31,7 @@ interface Tournament {
   id: number;
   name: string;
   startDate: string;
+  purse: string | null;
 }
 
 interface SettingsClientProps {
@@ -110,6 +111,13 @@ export function SettingsClient({
     } catch (error) {
       toast.error("Failed to delete sub-game");
     }
+  }
+
+  function formatPurse(purse: string | null): string {
+    if (!purse) return "";
+    const n = Number(purse);
+    if (isNaN(n) || n === 0) return "";
+    return ` · $${(n / 1_000_000).toFixed(1)}M`;
   }
 
   function toggleTournament(tournamentId: number) {
@@ -251,6 +259,7 @@ export function SettingsClient({
                     <span className="text-sm">{t.name}</span>
                     <span className="text-xs text-neutral-400">
                       {new Date(t.startDate).toLocaleDateString()}
+                      {formatPurse(t.purse)}
                     </span>
                   </label>
                 ))}

@@ -14,7 +14,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { KeyRound, Pencil, UserMinus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { KeyRound, Pencil, Search, UserMinus } from "lucide-react";
 import { removeMember, sendMemberPasswordReset, setMemberDisplayName, setMemberPassword } from "@/lib/actions/games";
 
 interface Member {
@@ -47,6 +48,7 @@ export function MemberList({
   const [newPassword, setNewPassword] = useState("");
   const [editName, setEditName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
 
   async function handleRemove() {
     if (!removeTarget) return;
@@ -130,10 +132,30 @@ export function MemberList({
   const canManage = (member: Member) =>
     isManager && member.role !== "manager" && member.userId !== currentUserId;
 
+  const q = search.trim().toLowerCase();
+  const filteredMembers = q
+    ? members.filter(
+        (m) =>
+          displayName(m).toLowerCase().includes(q) ||
+          (m.userEmail ?? "").toLowerCase().includes(q)
+      )
+    : members;
+
   return (
     <>
+      {isManager && (
+        <div className="relative mb-3">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          <Input
+            placeholder="Search by team name or email…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+      )}
       <div className="space-y-2">
-        {members.map((member) => (
+        {filteredMembers.map((member) => (
           <div
             key={member.id}
             className="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2.5"
@@ -335,7 +357,7 @@ export function MemberList({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Set Display Name — {nameTarget ? displayName(nameTarget) : "Member"}
+              Set Team Name — {nameTarget ? displayName(nameTarget) : "Member"}
             </DialogTitle>
             <DialogDescription asChild>
               <div className="space-y-1">
@@ -344,7 +366,7 @@ export function MemberList({
                     Email: <span className="font-medium text-neutral-700">{nameTarget.userEmail}</span>
                   </p>
                 )}
-                <p>This name will appear on the leaderboard and member list.</p>
+                <p>This team name will appear on the leaderboard and member list.</p>
               </div>
             </DialogDescription>
           </DialogHeader>

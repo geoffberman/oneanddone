@@ -95,6 +95,63 @@ export const announcements = pgTable(
   (a) => [index("idx_announcement_game").on(a.gameId)]
 );
 
+export const customLeaderboards = pgTable(
+  "custom_leaderboards",
+  {
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    gameId: integer("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (cl) => [
+    index("idx_custom_lb_game").on(cl.gameId),
+    index("idx_custom_lb_owner").on(cl.ownerId),
+  ]
+);
+
+export const customLeaderboardMembers = pgTable(
+  "custom_leaderboard_members",
+  {
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    customLeaderboardId: integer("custom_leaderboard_id")
+      .notNull()
+      .references(() => customLeaderboards.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (clm) => [
+    uniqueIndex("idx_custom_lb_member_unique").on(
+      clm.customLeaderboardId,
+      clm.userId
+    ),
+  ]
+);
+
+export const customLeaderboardShares = pgTable(
+  "custom_leaderboard_shares",
+  {
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    customLeaderboardId: integer("custom_leaderboard_id")
+      .notNull()
+      .references(() => customLeaderboards.id, { onDelete: "cascade" }),
+    sharedWithUserId: text("shared_with_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (cls) => [
+    uniqueIndex("idx_custom_lb_share_unique").on(
+      cls.customLeaderboardId,
+      cls.sharedWithUserId
+    ),
+  ]
+);
+
 // Relations
 export const gamesRelations = relations(games, ({ one, many }) => ({
   season: one(seasons, {
@@ -153,3 +210,47 @@ export const announcementsRelations = relations(announcements, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const customLeaderboardsRelations = relations(
+  customLeaderboards,
+  ({ one, many }) => ({
+    game: one(games, {
+      fields: [customLeaderboards.gameId],
+      references: [games.id],
+    }),
+    owner: one(users, {
+      fields: [customLeaderboards.ownerId],
+      references: [users.id],
+    }),
+    members: many(customLeaderboardMembers),
+    shares: many(customLeaderboardShares),
+  })
+);
+
+export const customLeaderboardMembersRelations = relations(
+  customLeaderboardMembers,
+  ({ one }) => ({
+    leaderboard: one(customLeaderboards, {
+      fields: [customLeaderboardMembers.customLeaderboardId],
+      references: [customLeaderboards.id],
+    }),
+    user: one(users, {
+      fields: [customLeaderboardMembers.userId],
+      references: [users.id],
+    }),
+  })
+);
+
+export const customLeaderboardSharesRelations = relations(
+  customLeaderboardShares,
+  ({ one }) => ({
+    leaderboard: one(customLeaderboards, {
+      fields: [customLeaderboardShares.customLeaderboardId],
+      references: [customLeaderboards.id],
+    }),
+    sharedWith: one(users, {
+      fields: [customLeaderboardShares.sharedWithUserId],
+      references: [users.id],
+    }),
+  })
+);
