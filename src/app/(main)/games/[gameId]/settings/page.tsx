@@ -83,6 +83,7 @@ export default async function SettingsPage({
           id: t.id,
           name: t.name,
           startDate: t.startDate.toISOString(),
+          purse: t.purse ?? null,
         }))}
         memberEmails={members
           .map((m) => m.userEmail)

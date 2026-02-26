@@ -98,9 +98,10 @@ export async function getCurrentTournamentPickNames(
 
 export async function getSeasonLeaderboard(
   gameId: number,
-  options?: { currentTournamentId?: number }
+  options?: { currentTournamentId?: number; userIdFilter?: string[] }
 ): Promise<LeaderboardEntry[]> {
   const tid = options?.currentTournamentId;
+  const uidFilter = options?.userIdFilter;
   // Start from gameMembers so ALL pool members appear, even those with no picks yet.
   const rows = await db
     .select({
@@ -118,7 +119,14 @@ export async function getSeasonLeaderboard(
     .from(gameMembers)
     .innerJoin(users, eq(gameMembers.userId, users.id))
     .leftJoin(picks, and(eq(picks.gameId, gameMembers.gameId), eq(picks.userId, gameMembers.userId)))
-    .where(eq(gameMembers.gameId, gameId))
+    .where(
+      and(
+        eq(gameMembers.gameId, gameId),
+        uidFilter && uidFilter.length > 0
+          ? inArray(gameMembers.userId, uidFilter)
+          : undefined
+      )
+    )
     .groupBy(gameMembers.userId, users.displayName, users.name, users.image)
     .orderBy(
       sql`COALESCE(SUM(CAST(${picks.earnings} AS NUMERIC)), 0) DESC`

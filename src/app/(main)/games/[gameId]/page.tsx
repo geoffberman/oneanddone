@@ -151,11 +151,15 @@ export default async function GameHomePage({
                   <p className="text-sm font-medium text-green-800">
                     Pick submitted
                   </p>
-                  <Button asChild variant="outline" size="sm">
+                  <Button
+                    asChild
+                    size="sm"
+                    className="border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100"
+                  >
                     <Link
                       href={`/games/${gameId}/picks/${currentTournament.id}`}
                     >
-                      View / Change
+                      View / Change Pick(s)
                     </Link>
                   </Button>
                 </div>
@@ -185,12 +189,12 @@ export default async function GameHomePage({
             ) : (
               <Button
                 asChild
-                className="w-full bg-green-600 hover:bg-green-700"
+                className="w-full bg-orange-400 text-white hover:bg-orange-500"
               >
                 <Link
                   href={`/games/${gameId}/picks/${currentTournament.id}`}
                 >
-                  Make Your Pick
+                  Make Pick(s)
                 </Link>
               </Button>
             )}
