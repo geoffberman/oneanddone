@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -94,6 +95,9 @@ function PickStatusIndicator({ hasPick }: { hasPick: boolean }) {
   return <X className="h-3.5 w-3.5 text-red-500" />;
 }
 
+// Refresh interval while a round is in progress (3 minutes)
+const LIVE_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
+
 export function LeaderboardClient({
   options,
   currentUserId,
@@ -102,6 +106,15 @@ export function LeaderboardClient({
   isInProgress,
 }: Props) {
   const [selected, setSelected] = useState(defaultBoard || options[0]?.id || "");
+  const router = useRouter();
+
+  // Re-render the server component on a timer while the tournament is live so
+  // scores stay current without the user having to manually refresh.
+  useEffect(() => {
+    if (!isInProgress) return;
+    const id = setInterval(() => router.refresh(), LIVE_REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [isInProgress, router]);
 
   const current = options.find((o) => o.id === selected);
   const entries = current?.entries || [];
