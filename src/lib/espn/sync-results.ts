@@ -3,7 +3,6 @@ import { tournaments, golfers, tournamentResults, picks } from "@/db/schema";
 import { eq, and, or, sql, inArray, gte } from "drizzle-orm";
 import {
   fetchEventLeaderboard,
-  getCurrentSeasonYear,
   splitDisplayName,
   parsePosition,
   isWithdrawn as competitorIsWithdrawn,
@@ -16,6 +15,18 @@ import { getProjectedEarnings } from "@/lib/golf/payout-table";
 export async function syncResults() {
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  // Safety net: close any tournament whose end_date passed > 1 day ago but is
+  // still flagged as live (happens when API calls fail, e.g. 403 errors).
+  await db.execute(sql`
+    UPDATE tournaments
+    SET is_over = true, is_in_progress = false, updated_at = ${now}
+    WHERE canceled = false
+      AND is_over  = false
+      AND end_date IS NOT NULL
+      AND end_date < ${yesterday}
+  `);
 
   // Find tournaments that need syncing (same criteria as sportsdata version)
   const activeTournaments = await db
@@ -233,6 +244,18 @@ export async function syncResults() {
       });
     } catch (error) {
       console.error(`Failed to sync results for ${tournament.name}:`, error);
+      // If the API failed but this tournament's end date has passed, mark it
+      // as over so it stops appearing as LIVE on the site.
+      if (tournament.endDate && new Date(tournament.endDate) < yesterday) {
+        try {
+          await db
+            .update(tournaments)
+            .set({ isOver: true, isInProgress: false, updatedAt: now })
+            .where(eq(tournaments.id, tournament.id));
+        } catch (closeErr) {
+          console.error(`Failed to auto-close ${tournament.name}:`, closeErr);
+        }
+      }
       results.push({
         tournament: tournament.name,
         error: String(error),

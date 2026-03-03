@@ -1,5 +1,6 @@
 import { db } from "@/db";
-import { sql } from "drizzle-orm";
+import { tournaments as tournamentsTable } from "@/db/schema";
+import { eq, sql } from "drizzle-orm";
 import {
   fetchLeaderboard,
   getCurrentSeasonYear,
@@ -27,13 +28,14 @@ export async function syncSchedule() {
   `);
   const seasonId = seasonResult.rows[0].id as number;
 
-  const tournaments = data.tournaments ?? [];
+  const espnTournaments = data.tournaments ?? [];
 
-  if (tournaments.length > 0) {
-    // Process in batches to avoid hitting parameter limits
+  // ── Step 1: Upsert via ESPN ID ─────────────────────────────────────────────
+  // Inserts new rows or updates existing ESPN-ID rows.
+  if (espnTournaments.length > 0) {
     const BATCH_SIZE = 50;
-    for (let i = 0; i < tournaments.length; i += BATCH_SIZE) {
-      const batch = tournaments.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < espnTournaments.length; i += BATCH_SIZE) {
+      const batch = espnTournaments.slice(i, i + BATCH_SIZE);
 
       const values = batch.map((t) => {
         const espnId = parseInt(t.id, 10);
@@ -48,7 +50,6 @@ export async function syncSchedule() {
           t.courses && t.courses.length > 0 ? t.courses[0].par ?? null : null;
         const isOver = t.status.type.completed && t.status.type.state === "post";
         const isInProgress = t.status.type.state === "in";
-        const canceled = false; // ESPN doesn't explicitly flag canceled; treat absent data as not canceled
 
         return sql`(
           ${espnId},
@@ -64,7 +65,7 @@ export async function syncSchedule() {
           ${null}::timestamptz,
           ${isOver},
           ${isInProgress},
-          ${canceled},
+          false,
           ${now},
           ${now}
         )`;
@@ -90,15 +91,58 @@ export async function syncSchedule() {
           purse           = COALESCE(NULLIF(EXCLUDED.purse, '0'), tournaments.purse),
           is_over         = EXCLUDED.is_over,
           is_in_progress  = EXCLUDED.is_in_progress,
-          canceled        = EXCLUDED.canceled,
           updated_at      = EXCLUDED.updated_at
       `);
     }
   }
 
+  // ── Step 2: Migrate SportsData tournament rows → ESPN IDs ─────────────────
+  // Existing DB rows have SportsData IDs (< 10 000). ESPN IDs are 9-digit
+  // numbers (> 100 000 000). Matching by case-insensitive name within the same
+  // season lets us reuse those rows so existing picks remain linked.
+  let migratedCount = 0;
+  for (const t of espnTournaments) {
+    const espnId = parseInt(t.id, 10);
+    if (isNaN(espnId)) continue;
+
+    const isOver = t.status.type.completed && t.status.type.state === "post";
+    const isInProgress = t.status.type.state === "in";
+
+    const result = await db.execute(sql`
+      UPDATE tournaments
+      SET
+        external_tournament_id = ${espnId},
+        is_over                = ${isOver},
+        is_in_progress         = ${isInProgress},
+        updated_at             = ${now}
+      WHERE
+        season_id              = ${seasonId}
+        AND LOWER(name)        = LOWER(${t.name})
+        AND external_tournament_id != ${espnId}
+        AND external_tournament_id < 100000
+    `);
+    migratedCount += result.rowCount ?? 0;
+  }
+
+  // ── Step 3: Date-based auto-close ─────────────────────────────────────────
+  // Any tournament whose end_date passed more than 1 day ago but is still
+  // flagged as live gets closed here. This is a safety net for API failures.
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const autoCloseResult = await db.execute(sql`
+    UPDATE tournaments
+    SET is_over = true, is_in_progress = false, updated_at = ${now}
+    WHERE canceled = false
+      AND is_over  = false
+      AND end_date IS NOT NULL
+      AND end_date < ${yesterday}
+  `);
+  const autoClosedCount = autoCloseResult.rowCount ?? 0;
+
   return {
     season: seasonId,
     seasonYear,
-    tournamentsCount: tournaments.length,
+    tournamentsCount: espnTournaments.length,
+    migratedToEspnIds: migratedCount,
+    autoClosedStale: autoClosedCount,
   };
 }
