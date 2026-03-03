@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncField } from "@/lib/sportsdata/sync-field";
+import { syncField } from "@/lib/espn/sync-field";
 
 export const maxDuration = 60;
 
