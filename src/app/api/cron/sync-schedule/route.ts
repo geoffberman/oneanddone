@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncSchedule } from "@/lib/sportsdata/sync-schedule";
+import { syncSchedule } from "@/lib/espn/sync-schedule";
 
 export const maxDuration = 60;
 
