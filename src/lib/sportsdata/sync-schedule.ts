@@ -149,12 +149,25 @@ export async function syncSchedule() {
     console.error("[SyncSchedule] Failed to fetch PlayerSeasonStats for rankings:", err);
   }
 
+  // Date-based auto-close: any tournament whose end_date passed > 1 day ago
+  // but is still flagged as live gets closed now, regardless of API data.
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const autoCloseResult = await db.execute(sql`
+    UPDATE tournaments
+    SET is_over = true, is_in_progress = false, updated_at = ${now}
+    WHERE canceled = false
+      AND is_over  = false
+      AND end_date IS NOT NULL
+      AND end_date < ${yesterday}
+  `);
+
   return {
     season: seasonId,
     tournamentsCount: apiTournaments.length,
     playersCount: apiPlayers.length,
     rankingsUpdated,
     rankingsDiag,
+    autoClosedStale: autoCloseResult.rowCount ?? 0,
     ...(rankingsError ? { rankingsError } : {}),
   };
 }
