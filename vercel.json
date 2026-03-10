@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/sync-field",
-      "schedule": "0 18 * * 5,6"
+      "schedule": "0 18 * * 1,2,5,6"
     },
     {
       "path": "/api/cron/sync-results",
