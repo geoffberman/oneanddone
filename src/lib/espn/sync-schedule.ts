@@ -17,6 +17,8 @@ export async function syncSchedule() {
   const seasonYear = data.season?.year ?? year;
   const seasonName = data.season?.displayName ?? `${seasonYear} PGA Tour`;
 
+  const espnTournaments = data.events ?? data.tournaments ?? [];
+
   // Upsert season
   const seasonResult = await db.execute(sql`
     INSERT INTO seasons (year, name, created_at, updated_at)
@@ -28,7 +30,6 @@ export async function syncSchedule() {
   `);
   const seasonId = seasonResult.rows[0].id as number;
 
-  const espnTournaments = data.tournaments ?? [];
 
   // ── Step 1: Upsert via ESPN ID ─────────────────────────────────────────────
   // Inserts new rows or updates existing ESPN-ID rows.
@@ -39,8 +40,8 @@ export async function syncSchedule() {
 
       const values = batch.map((t) => {
         const espnId = parseInt(t.id, 10);
-        const startDate = new Date(t.date.start);
-        const endDate = t.date.end ? new Date(t.date.end) : null;
+        const startDate = new Date(t.date);
+        const endDate = t.endDate ? new Date(t.endDate) : null;
         const purse = parsePurse(t.purse);
         const location = getTournamentLocation(t);
         const venue = t.venue?.fullName ?? null;

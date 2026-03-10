@@ -54,11 +54,12 @@ export async function syncResults() {
     try {
       const data = await fetchEventLeaderboard(tournament.externalTournamentId);
 
-      // ESPN returns a tournaments array; find the matching event
+      // ESPN returns an events (or tournaments) array; find the matching event
+      const allEvents = data.events ?? data.tournaments ?? [];
       const espnTournament =
-        data.tournaments?.find(
+        allEvents.find(
           (t) => parseInt(t.id, 10) === tournament.externalTournamentId
-        ) ?? data.tournaments?.[0];
+        ) ?? allEvents[0];
 
       if (!espnTournament) {
         results.push({
