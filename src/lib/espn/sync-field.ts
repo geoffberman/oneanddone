@@ -2,9 +2,12 @@ import { db } from "@/db";
 import { tournaments, golfers, tournamentFields } from "@/db/schema";
 import { eq, and, gte, lte, or, inArray, sql } from "drizzle-orm";
 import {
+  fetchLeaderboard,
   fetchEventLeaderboard,
+  getCurrentSeasonYear,
   splitDisplayName,
   isWithdrawn as competitorIsWithdrawn,
+  type EspnCompetitor,
 } from "./client";
 
 export async function syncField() {
@@ -12,7 +15,6 @@ export async function syncField() {
   const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  // Same tournament selection criteria as the sportsdata version
   const allTournaments = await db
     .select()
     .from(tournaments)
@@ -29,31 +31,61 @@ export async function syncField() {
 
   const results = [];
 
+  // Fetch the full season leaderboard once — this endpoint is known to work and
+  // contains competitor data for the current/upcoming event.
+  const year = getCurrentSeasonYear();
+  let seasonData;
+  try {
+    seasonData = await fetchLeaderboard(year);
+  } catch (err) {
+    return {
+      tournamentsFound: allTournaments.length,
+      tournamentNames: allTournaments.map((t) => t.name),
+      details: [],
+      error: `Season leaderboard fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const espnTournamentsInSeason = seasonData.tournaments ?? [];
+
   for (const tournament of allTournaments) {
     try {
-      const data = await fetchEventLeaderboard(tournament.externalTournamentId);
+      // Primary: find this tournament in the season response by ESPN ID.
+      let espnTournament = espnTournamentsInSeason.find(
+        (t) => parseInt(t.id, 10) === tournament.externalTournamentId
+      );
 
-      const espnTournament =
-        data.tournaments?.find(
-          (t) => parseInt(t.id, 10) === tournament.externalTournamentId
-        ) ?? data.tournaments?.[0];
+      let players: EspnCompetitor[] = espnTournament?.competitors ?? [];
 
-      if (!espnTournament) {
-        results.push({ tournament: tournament.name, fieldCount: 0, earliestTeeTime: null });
-        continue;
+      // If the season endpoint has no competitors (common for pre-tournament events),
+      // fall back to the event-specific endpoint which may have a field/entry list.
+      if (players.length === 0) {
+        try {
+          const eventData = await fetchEventLeaderboard(tournament.externalTournamentId);
+          const eventTournament =
+            eventData.tournaments?.find(
+              (t) => parseInt(t.id, 10) === tournament.externalTournamentId
+            ) ?? eventData.tournaments?.[0];
+          if (eventTournament?.competitors && eventTournament.competitors.length > 0) {
+            espnTournament = eventTournament;
+            players = eventTournament.competitors;
+          }
+        } catch {
+          // event endpoint failed — continue with empty field
+        }
       }
-
-      const players = espnTournament.competitors ?? [];
 
       if (players.length === 0) {
-        results.push({ tournament: tournament.name, fieldCount: 0, earliestTeeTime: null });
+        results.push({
+          tournament: tournament.name,
+          espnId: tournament.externalTournamentId,
+          espnFoundInSeason: !!espnTournament,
+          espnTournamentName: espnTournament?.name ?? null,
+          fieldCount: 0,
+          note: "ESPN returned no competitors — field may not be published yet for upcoming event",
+        });
         continue;
       }
-
-      // ESPN provides tee times in linescores — extract earliest Round 1 start.
-      // ESPN doesn't consistently expose per-player tee times in the leaderboard
-      // endpoint, so we skip firstTeeTime updates from this sync and rely on
-      // the schedule data.
 
       // Build ESPN ID → internal golfer ID map
       const espnIds = players.map((p) => parseInt(p.id, 10)).filter((n) => !isNaN(n));
@@ -76,22 +108,16 @@ export async function syncField() {
       );
 
       if (missingPlayers.length > 0) {
-        // Try name-based bulk lookup to avoid N+1 queries
         const namePairs = missingPlayers.map((p) => {
           const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
           return { espnId: parseInt(p.id, 10), firstName, lastName, p };
         });
 
-        // Fetch all golfers whose firstName+lastName match any of the missing players
         const lastNames = [...new Set(namePairs.map((np) => np.lastName))];
         const nameMatchRows =
           lastNames.length > 0
             ? await db
-                .select({
-                  id: golfers.id,
-                  firstName: golfers.firstName,
-                  lastName: golfers.lastName,
-                })
+                .select({ id: golfers.id, firstName: golfers.firstName, lastName: golfers.lastName })
                 .from(golfers)
                 .where(
                   inArray(
@@ -114,18 +140,14 @@ export async function syncField() {
           const matchedId = nameMatchMap.get(nameKey);
 
           if (matchedId) {
-            // Update existing golfer's externalPlayerId to ESPN ID
             await db
               .update(golfers)
               .set({ externalPlayerId: espnId, updatedAt: now })
               .where(eq(golfers.id, matchedId));
             existingMap.set(espnId, matchedId);
           } else {
-            // Insert as new golfer
-            const country =
-              p.athlete.flag?.alt ?? p.athlete.flag?.countryCode ?? null;
+            const country = p.athlete.flag?.alt ?? p.athlete.flag?.countryCode ?? null;
             const photoUrl = p.athlete.headshot?.href ?? null;
-
             try {
               const inserted = await db.execute(sql`
                 INSERT INTO golfers (external_player_id, first_name, last_name, country, photo_url, created_at, updated_at)
@@ -143,10 +165,7 @@ export async function syncField() {
         }
       }
 
-      // Upsert tournament_fields entries
-      const fieldPlayers = players.filter((p) =>
-        existingMap.has(parseInt(p.id, 10))
-      );
+      const fieldPlayers = players.filter((p) => existingMap.has(parseInt(p.id, 10)));
 
       if (fieldPlayers.length > 0) {
         const fieldValues = fieldPlayers.map((p) => {
@@ -173,13 +192,15 @@ export async function syncField() {
 
       results.push({
         tournament: tournament.name,
+        espnId: tournament.externalTournamentId,
+        espnFoundInSeason: true,
         fieldCount: fieldPlayers.length,
-        earliestTeeTime: null,
       });
     } catch (error) {
       console.error(`Failed to sync field for ${tournament.name}:`, error);
       results.push({
         tournament: tournament.name,
+        espnId: tournament.externalTournamentId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -188,6 +209,7 @@ export async function syncField() {
   return {
     tournamentsFound: allTournaments.length,
     tournamentNames: allTournaments.map((t) => t.name),
+    espnTournamentsInSeason: espnTournamentsInSeason.length,
     details: results,
   };
 }
