@@ -28,7 +28,35 @@ export async function syncSchedule() {
   const seasonId = seasonResult.rows[0].id as number;
 
 
-  // ── Step 1: Upsert via ESPN ID ─────────────────────────────────────────────
+  // ── Step 1: Migrate SportsData tournament rows → ESPN IDs ─────────────────
+  // Must run BEFORE the upsert so old SportsData rows (id < 100000) get the
+  // ESPN ID first. Otherwise the upsert in Step 2 inserts a duplicate row and
+  // the subsequent UPDATE here hits a unique-constraint violation.
+  let migratedCount = 0;
+  for (const t of espnTournaments) {
+    const espnId = parseInt(t.id, 10);
+    if (isNaN(espnId)) continue;
+
+    const isOver = t.status.type.completed && t.status.type.state === "post";
+    const isInProgress = t.status.type.state === "in";
+
+    const result = await db.execute(sql`
+      UPDATE tournaments
+      SET
+        external_tournament_id = ${espnId},
+        is_over                = ${isOver},
+        is_in_progress         = ${isInProgress},
+        updated_at             = ${now}
+      WHERE
+        season_id              = ${seasonId}
+        AND LOWER(name)        = LOWER(${t.name})
+        AND external_tournament_id != ${espnId}
+        AND external_tournament_id < 100000
+    `);
+    migratedCount += result.rowCount ?? 0;
+  }
+
+  // ── Step 2: Upsert via ESPN ID ─────────────────────────────────────────────
   // Inserts new rows or updates existing ESPN-ID rows.
   if (espnTournaments.length > 0) {
     const BATCH_SIZE = 50;
@@ -92,34 +120,6 @@ export async function syncSchedule() {
           updated_at      = EXCLUDED.updated_at
       `);
     }
-  }
-
-  // ── Step 2: Migrate SportsData tournament rows → ESPN IDs ─────────────────
-  // Existing DB rows have SportsData IDs (< 10 000). ESPN IDs are 9-digit
-  // numbers (> 100 000 000). Matching by case-insensitive name within the same
-  // season lets us reuse those rows so existing picks remain linked.
-  let migratedCount = 0;
-  for (const t of espnTournaments) {
-    const espnId = parseInt(t.id, 10);
-    if (isNaN(espnId)) continue;
-
-    const isOver = t.status.type.completed && t.status.type.state === "post";
-    const isInProgress = t.status.type.state === "in";
-
-    const result = await db.execute(sql`
-      UPDATE tournaments
-      SET
-        external_tournament_id = ${espnId},
-        is_over                = ${isOver},
-        is_in_progress         = ${isInProgress},
-        updated_at             = ${now}
-      WHERE
-        season_id              = ${seasonId}
-        AND LOWER(name)        = LOWER(${t.name})
-        AND external_tournament_id != ${espnId}
-        AND external_tournament_id < 100000
-    `);
-    migratedCount += result.rowCount ?? 0;
   }
 
   // ── Step 3: Date-based auto-close ─────────────────────────────────────────
