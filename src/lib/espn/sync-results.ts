@@ -9,6 +9,7 @@ import {
   madeCut,
   parsePurse,
   extractEarnings,
+  getCompetitors,
 } from "./client";
 import { getProjectedEarnings } from "@/lib/golf/payout-table";
 
@@ -101,7 +102,7 @@ export async function syncResults() {
         .set(updateFields)
         .where(eq(tournaments.id, tournament.id));
 
-      const players = espnTournament.competitors ?? [];
+      const players = getCompetitors(espnTournament);
       let resultsCount = 0;
 
       if (players.length > 0) {

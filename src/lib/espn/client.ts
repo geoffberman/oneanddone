@@ -166,7 +166,19 @@ export interface EspnTournament {
   displayPurse?: string;
   venue?: EspnVenue;
   courses?: EspnCourse[];
+  /** New /golf endpoint nests competitors under competitions[0].competitors */
+  competitions?: Array<{ competitors?: EspnCompetitor[] }>;
+  /** Old /golf/pga endpoint had competitors at the top level (kept for compat) */
   competitors?: EspnCompetitor[];
+}
+
+/** Extract competitors from an ESPN tournament regardless of response shape. */
+export function getCompetitors(tournament: EspnTournament): EspnCompetitor[] {
+  // New /golf endpoint: event.competitions[0].competitors
+  const fromCompetitions = tournament.competitions?.[0]?.competitors;
+  if (fromCompetitions && fromCompetitions.length > 0) return fromCompetitions;
+  // Old /golf/pga endpoint: event.competitors
+  return tournament.competitors ?? [];
 }
 
 export interface EspnTournamentStatus {

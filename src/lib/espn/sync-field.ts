@@ -7,6 +7,7 @@ import {
   getCurrentSeasonYear,
   splitDisplayName,
   isWithdrawn as competitorIsWithdrawn,
+  getCompetitors,
   type EspnCompetitor,
 } from "./client";
 
@@ -55,7 +56,7 @@ export async function syncField() {
         (t) => parseInt(t.id, 10) === tournament.externalTournamentId
       );
 
-      let players: EspnCompetitor[] = espnTournament?.competitors ?? [];
+      let players: EspnCompetitor[] = espnTournament ? getCompetitors(espnTournament) : [];
 
       // If the season endpoint has no competitors (common for pre-tournament events),
       // fall back to the event-specific endpoint which may have a field/entry list.
@@ -67,9 +68,12 @@ export async function syncField() {
             eventEvents.find(
               (t) => parseInt(t.id, 10) === tournament.externalTournamentId
             ) ?? eventEvents[0];
-          if (eventTournament?.competitors && eventTournament.competitors.length > 0) {
-            espnTournament = eventTournament;
-            players = eventTournament.competitors;
+          if (eventTournament) {
+            const eventPlayers = getCompetitors(eventTournament);
+            if (eventPlayers.length > 0) {
+              espnTournament = eventTournament;
+              players = eventPlayers;
+            }
           }
         } catch {
           // event endpoint failed — continue with empty field
