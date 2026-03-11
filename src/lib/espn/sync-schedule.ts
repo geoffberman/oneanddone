@@ -1,8 +1,7 @@
 import { db } from "@/db";
-import { tournaments as tournamentsTable } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
-  fetchLeaderboard,
+  fetchCoreApiSchedule,
   getCurrentSeasonYear,
   parsePurse,
   getTournamentLocation,
@@ -12,12 +11,10 @@ export async function syncSchedule() {
   const year = getCurrentSeasonYear();
   const now = new Date();
 
-  const data = await fetchLeaderboard(year);
+  const espnTournaments = await fetchCoreApiSchedule(year);
 
-  const seasonYear = data.season?.year ?? year;
-  const seasonName = data.season?.displayName ?? `${seasonYear} PGA Tour`;
-
-  const espnTournaments = data.events ?? data.tournaments ?? [];
+  const seasonYear = year;
+  const seasonName = `${seasonYear} PGA Tour`;
 
   // Upsert season
   const seasonResult = await db.execute(sql`

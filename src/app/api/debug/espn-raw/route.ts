@@ -1,77 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchCoreApiSchedule, getCurrentSeasonYear } from "@/lib/espn/client";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
-const HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Accept: "application/json",
-};
-
-async function fetchJson(url: string) {
-  const res = await fetch(url, { headers: HEADERS });
-  const text = await res.text();
-  let parsed: unknown = null;
-  try { parsed = JSON.parse(text); } catch { /* ignore */ }
-  return { status: res.status, parsed, text };
-}
-
+// Protected debug endpoint — verifies ESPN core API schedule fetch.
+// Call with: GET /api/debug/espn-raw?secret=<CRON_SECRET>
 export async function GET(request: NextRequest) {
   const secret = request.nextUrl.searchParams.get("secret");
   if (secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const year = new Date().getFullYear();
+  const year = getCurrentSeasonYear();
 
-  // Step 1: get the list of event refs from core API
-  const listUrl = `https://sports.core.api.espn.com/v2/sports/golf/leagues/pga/events?limit=100&dates=${year}`;
-  const { status: listStatus, parsed: listParsed } = await fetchJson(listUrl);
+  try {
+    const events = await fetchCoreApiSchedule(year);
 
-  const items = (listParsed as Record<string, unknown>)?.items;
-  const firstRef = Array.isArray(items) && items.length > 0
-    ? (items[0] as Record<string, unknown>).$ref as string
-    : null;
-  const lastRef = Array.isArray(items) && items.length > 1
-    ? (items[items.length - 1] as Record<string, unknown>).$ref as string
-    : null;
+    const summary = events.map((e) => ({
+      id: e.id,
+      name: e.name,
+      date: e.date,
+      endDate: e.endDate,
+      state: e.status?.type?.state,
+      completed: e.status?.type?.completed,
+      venue: e.venue?.fullName ?? null,
+      purse: e.purse,
+    }));
 
-  // Step 2: fetch the detail of the first event via the core API $ref
-  let firstEventDetail: unknown = null;
-  let firstEventKeys: string[] = [];
-  if (firstRef) {
-    // Convert internal pvt URL to public URL if needed
-    const publicRef = firstRef.replace("sports.core.api.espn.pvt", "sports.core.api.espn.com");
-    const { status: detailStatus, parsed: detailParsed } = await fetchJson(publicRef);
-    firstEventDetail = { status: detailStatus, allKeys: detailParsed && typeof detailParsed === "object" ? Object.keys(detailParsed as object) : [] };
-    firstEventKeys = detailParsed && typeof detailParsed === "object" ? Object.keys(detailParsed as object) : [];
-
-    // Show key fields we care about for sync-schedule
-    if (detailParsed && typeof detailParsed === "object") {
-      const d = detailParsed as Record<string, unknown>;
-      firstEventDetail = {
-        httpStatus: detailStatus,
-        id: d.id,
-        name: d.name,
-        shortName: d.shortName,
-        date: d.date,
-        endDate: d.endDate,
-        status: d.status,
-        purse: d.purse,
-        displayPurse: d.displayPurse,
-        venue: d.venue,
-        allKeys: firstEventKeys,
-      };
-    }
+    return NextResponse.json({
+      year,
+      eventCount: events.length,
+      first: summary[0] ?? null,
+      last: summary[summary.length - 1] ?? null,
+      all: summary,
+    });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
-
-  return NextResponse.json({
-    coreApiList: {
-      status: listStatus,
-      count: (listParsed as Record<string, unknown>)?.count,
-      firstRef,
-      lastRef,
-    },
-    firstEventDetail,
-  });
 }
