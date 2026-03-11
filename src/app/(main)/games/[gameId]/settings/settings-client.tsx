@@ -59,6 +59,11 @@ export function SettingsClient({
   const [newTournamentIds, setNewTournamentIds] = useState<number[]>([]);
   const [gmailAccountIndex, setGmailAccountIndex] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [editingSubGameId, setEditingSubGameId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editTournamentIds, setEditTournamentIds] = useState<number[]>([]);
+  const [editLoading, setEditLoading] = useState(false);
   const [syncingEarnings, setSyncingEarnings] = useState(false);
 
   async function handleSaveName() {
@@ -126,6 +131,45 @@ export function SettingsClient({
         ? prev.filter((id) => id !== tournamentId)
         : [...prev, tournamentId]
     );
+  }
+
+  function startEdit(sg: SubGame) {
+    setEditingSubGameId(sg.id);
+    setEditName(sg.name);
+    setEditDescription(sg.description ?? "");
+    setEditTournamentIds(sg.tournamentIds);
+  }
+
+  function cancelEdit() {
+    setEditingSubGameId(null);
+    setEditName("");
+    setEditDescription("");
+    setEditTournamentIds([]);
+  }
+
+  function toggleEditTournament(tournamentId: number) {
+    setEditTournamentIds((prev) =>
+      prev.includes(tournamentId)
+        ? prev.filter((id) => id !== tournamentId)
+        : [...prev, tournamentId]
+    );
+  }
+
+  async function handleUpdate(subGameId: number) {
+    if (!editName.trim()) return;
+    setEditLoading(true);
+    try {
+      await updateSubGame(gameId, subGameId, editName.trim(), editDescription || null, editTournamentIds);
+      toast.success("Sub-game updated!");
+      cancelEdit();
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update sub-game"
+      );
+    } finally {
+      setEditLoading(false);
+    }
   }
 
   async function handleSyncEarnings() {
@@ -371,31 +415,116 @@ export function SettingsClient({
         </Card>
       ) : (
         <div className="space-y-2">
-          {initialSubGames.map((sg) => (
-            <Card key={sg.id}>
-              <CardContent className="flex items-center justify-between p-4">
-                <div>
-                  <p className="font-medium">{sg.name}</p>
-                  {sg.description && (
-                    <p className="text-sm text-neutral-500">
-                      {sg.description}
+          {initialSubGames.map((sg) =>
+            editingSubGameId === sg.id ? (
+              <Card key={sg.id}>
+                <CardHeader>
+                  <CardTitle className="text-base">Edit Sub-Game</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Name</label>
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">
+                      Description (optional)
+                    </label>
+                    <Input
+                      placeholder="Brief description"
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">
+                      Tournaments
+                    </label>
+                    <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-neutral-200 p-2">
+                      {tournaments.map((t) => (
+                        <label
+                          key={t.id}
+                          className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-neutral-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={editTournamentIds.includes(t.id)}
+                            onChange={() => toggleEditTournament(t.id)}
+                            className="rounded"
+                          />
+                          <span className="text-sm">{t.name}</span>
+                          <span className="text-xs text-neutral-400">
+                            {new Date(t.startDate).toLocaleDateString()}
+                            {formatPurse(t.purse)}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      {editTournamentIds.length} tournaments selected
                     </p>
-                  )}
-                  <p className="mt-1 text-xs text-neutral-400">
-                    {sg.tournamentIds.length} tournaments
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(sg.id)}
-                  className="text-red-500 hover:text-red-700"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handleUpdate(sg.id)}
+                      disabled={editLoading || !editName.trim()}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {editLoading ? "Saving..." : "Save Changes"}
+                    </Button>
+                    <Button variant="outline" onClick={cancelEdit}>
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleDelete(sg.id)}
+                      className="ml-auto text-red-500 hover:text-red-700"
+                    >
+                      <Trash2 className="mr-1.5 h-4 w-4" />
+                      Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card key={sg.id}>
+                <CardContent className="flex items-center justify-between p-4">
+                  <div>
+                    <p className="font-medium">{sg.name}</p>
+                    {sg.description && (
+                      <p className="text-sm text-neutral-500">
+                        {sg.description}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-neutral-400">
+                      {sg.tournamentIds.length} tournaments
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => startEdit(sg)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(sg.id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          )}
         </div>
       )}
     </div>
