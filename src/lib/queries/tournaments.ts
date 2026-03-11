@@ -69,15 +69,18 @@ export async function getSeasonTournaments(seasonId: number) {
     .where(eq(tournaments.seasonId, seasonId))
     .orderBy(asc(tournaments.startDate));
 
-  // Deduplicate by start date — the same PGA Tour event sometimes has two DB
-  // rows with different IDs and slightly different names (e.g. "Arnold Palmer
-  // Invitational" vs "Arnold Palmer Invitational presented by Mastercard").
-  // Each event occupies a unique week so same start day = same tournament.
+  // Deduplicate by normalized name — the same PGA Tour event sometimes has
+  // two DB rows with different IDs (e.g. "Arnold Palmer Invitational" vs
+  // "Arnold Palmer Invitational presented by Mastercard"). Strip sponsor
+  // suffixes before comparing so those collapse to one entry.
   const seen = new Set<string>();
   return rows.filter((t) => {
-    const day = new Date(t.startDate).toISOString().slice(0, 10);
-    if (seen.has(day)) return false;
-    seen.add(day);
+    const normalized = t.name
+      .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
+      .trim()
+      .toLowerCase();
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
     return true;
   });
 }
