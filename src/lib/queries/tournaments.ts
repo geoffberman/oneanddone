@@ -101,9 +101,8 @@ export async function getSeasonTournaments(seasonId: number) {
   // Step 2 — remove secondary events on the same start date.
   // When the PGA Tour runs an opposite-field event the same week as a major
   // or flagship event, the secondary event has a meaningfully lower purse.
-  // Keep only the highest-purse tournament per start date; if two events
-  // share a date and one has zero/null purse, keep the one with a purse.
-  // If neither has a purse (or they're equal), keep both.
+  // Only suppress when BOTH events have a non-zero purse — majors like The
+  // Open Championship may have null/0 purse in the DB and must be kept.
   const byDate = new Map<string, (typeof deduped)[0]>();
   const secondaryIds = new Set<number>();
   for (const t of deduped) {
@@ -114,7 +113,8 @@ export async function getSeasonTournaments(seasonId: number) {
     } else {
       const tPurse = parseFloat(t.purse ?? "0") || 0;
       const exPurse = parseFloat(existing.purse ?? "0") || 0;
-      if (tPurse === exPurse) {
+      // Only suppress when both have a real purse and they differ
+      if (tPurse === 0 || exPurse === 0 || tPurse === exPurse) {
         // Can't determine which is secondary; keep both
         continue;
       }

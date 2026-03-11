@@ -106,12 +106,64 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ currentYear, searchName: name, years: diagnostics });
     }
 
+    // ?action=golfer&name=<tournament name>&playerId=<externalPlayerId>
+    // Tests the exact flow used by /api/golf/golfer-results for a specific player.
+    if (action === "golfer") {
+      const name = request.nextUrl.searchParams.get("name");
+      const playerIdStr = request.nextUrl.searchParams.get("playerId");
+      if (!name || !playerIdStr) {
+        return NextResponse.json({ error: "name and playerId required" }, { status: 400 });
+      }
+      const externalPlayerId = parseInt(playerIdStr);
+
+      const currentSeason = await fetchCurrentSeason();
+      const currentYear = currentSeason.Season;
+      const diagnostics: Record<string, unknown>[] = [];
+
+      for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
+        const diag: Record<string, unknown> = { year };
+        try {
+          const tourns = await fetchTournamentsBySeason(year);
+          const match = tourns.find((t) => matchesTournamentName(t.Name, name));
+          if (!match) {
+            diag.matched = false;
+            diag.sampleNames = tourns.slice(0, 5).map((t) => t.Name);
+            diagnostics.push(diag);
+            continue;
+          }
+          diag.matched = true;
+          diag.matchedName = match.Name;
+
+          const leaderboard = await fetchLeaderboard(match.TournamentID);
+          const players = leaderboard.Players ?? [];
+          diag.playerCount = players.length;
+
+          const player = players.find((p) => p.PlayerID === externalPlayerId);
+          if (!player) {
+            diag.playerFound = false;
+            diag.samplePlayerIds = players.slice(0, 5).map((p) => p.PlayerID);
+          } else {
+            diag.playerFound = true;
+            diag.rank = player.Rank;
+            diag.madeCut = player.MadeCut;
+            diag.earnings = player.Earnings;
+          }
+        } catch (err) {
+          diag.error = String(err);
+        }
+        diagnostics.push(diag);
+      }
+
+      return NextResponse.json({ currentYear, searchName: name, externalPlayerId, years: diagnostics });
+    }
+
     return NextResponse.json({
       usage: [
         "?action=seasons",
         "?action=tournaments&year=2025",
         "?action=leaderboard&id=<tournamentId>",
         "?action=history&name=<tournament name>",
+        "?action=golfer&name=<tournament name>&playerId=<externalPlayerId>",
       ],
     });
   } catch (e) {

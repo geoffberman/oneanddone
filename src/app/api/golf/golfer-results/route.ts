@@ -34,7 +34,8 @@ async function getGolferTournamentHistory(
   }
 
   const currentSeason = await fetchCurrentSeason();
-  const currentYear = currentSeason.SeasonID;
+  // Use Season (the actual year, e.g. 2026) not SeasonID (which may differ)
+  const currentYear = currentSeason.Season;
   const results: GolferYearResult[] = [];
 
   for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
