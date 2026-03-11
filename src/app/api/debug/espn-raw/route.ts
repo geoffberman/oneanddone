@@ -8,8 +8,33 @@ const HEADERS = {
   Accept: "application/json",
 };
 
-// Protected debug endpoint — returns raw ESPN API response structure.
-// Call with: GET /api/debug/espn-raw?secret=<CRON_SECRET>
+async function probe(url: string) {
+  try {
+    const res = await fetch(url, { headers: HEADERS });
+    const text = await res.text();
+    let parsed: unknown = null;
+    try { parsed = JSON.parse(text); } catch { /* ignore */ }
+    const topKeys = parsed && typeof parsed === "object" ? Object.keys(parsed as object) : [];
+    // Count events/tournaments at top level
+    const events = (parsed as Record<string, unknown>)?.events;
+    const tournaments = (parsed as Record<string, unknown>)?.tournaments;
+    const count = Array.isArray(events) ? events.length : Array.isArray(tournaments) ? tournaments.length : "n/a";
+    const firstName = Array.isArray(events) && events.length > 0
+      ? (events[0] as Record<string, unknown>).name
+      : Array.isArray(tournaments) && tournaments.length > 0
+      ? (tournaments[0] as Record<string, unknown>).name
+      : null;
+    const lastName = Array.isArray(events) && events.length > 1
+      ? (events[events.length - 1] as Record<string, unknown>).name
+      : Array.isArray(tournaments) && tournaments.length > 1
+      ? (tournaments[tournaments.length - 1] as Record<string, unknown>).name
+      : null;
+    return { status: res.status, topKeys, count, firstName, lastName, preview: text.slice(0, 200) };
+  } catch (err) {
+    return { status: -1, topKeys: [], count: "err", firstName: null, lastName: null, preview: String(err) };
+  }
+}
+
 export async function GET(request: NextRequest) {
   const secret = request.nextUrl.searchParams.get("secret");
   if (secret !== process.env.CRON_SECRET) {
@@ -17,58 +42,20 @@ export async function GET(request: NextRequest) {
   }
 
   const year = new Date().getFullYear();
-  const url = `https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?season=${year}`;
 
-  try {
-    const res = await fetch(url, { headers: HEADERS });
-    const status = res.status;
-    const text = await res.text();
+  const results = await Promise.all([
+    probe(`https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?season=${year}`),
+    probe(`https://site.web.api.espn.com/apis/site/v2/sports/golf/schedule?season=${year}`),
+    probe(`https://site.web.api.espn.com/apis/site/v2/sports/golf/scoreboard?season=${year}&seasontype=2&limit=100`),
+    probe(`https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/schedule?season=${year}`),
+    probe(`https://sports.core.api.espn.com/v2/sports/golf/leagues/pga/events?limit=100&dates=${year}`),
+  ]);
 
-    let parsed: unknown = null;
-    try { parsed = JSON.parse(text); } catch { /* not JSON */ }
-
-    const topKeys = parsed && typeof parsed === "object" ? Object.keys(parsed as object) : [];
-    const events = (parsed as Record<string, unknown>)?.events;
-    const eventCount = Array.isArray(events) ? events.length : "not an array";
-
-    // Return first event without competitor list (can be huge)
-    const firstEventRaw = Array.isArray(events) && events.length > 0
-      ? events[0] as Record<string, unknown>
-      : null;
-
-    const firstEvent = firstEventRaw
-      ? {
-          id: firstEventRaw.id,
-          name: firstEventRaw.name,
-          date: firstEventRaw.date,
-          endDate: firstEventRaw.endDate,
-          status: firstEventRaw.status,
-          purse: firstEventRaw.purse,
-          displayPurse: firstEventRaw.displayPurse,
-          hasCompetitors: Array.isArray(firstEventRaw.competitors),
-          competitorCount: Array.isArray(firstEventRaw.competitors)
-            ? (firstEventRaw.competitors as unknown[]).length
-            : 0,
-          allKeys: Object.keys(firstEventRaw),
-        }
-      : null;
-
-    const lastEvent = Array.isArray(events) && events.length > 1
-      ? {
-          id: (events[events.length - 1] as Record<string, unknown>).id,
-          name: (events[events.length - 1] as Record<string, unknown>).name,
-          date: (events[events.length - 1] as Record<string, unknown>).date,
-        }
-      : null;
-
-    return NextResponse.json({
-      espnStatus: status,
-      topKeys,
-      eventCount,
-      firstEvent,
-      lastEvent,
-    });
-  } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
-  }
+  return NextResponse.json({
+    "1_leaderboard_season": results[0],
+    "2_golf_schedule": results[1],
+    "3_golf_scoreboard": results[2],
+    "4_golf_pga_schedule": results[3],
+    "5_core_api_pga_events": results[4],
+  });
 }
