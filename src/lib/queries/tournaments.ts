@@ -63,11 +63,20 @@ export async function getCurrentTournament() {
 }
 
 export async function getSeasonTournaments(seasonId: number) {
-  return db
+  const rows = await db
     .select()
     .from(tournaments)
     .where(eq(tournaments.seasonId, seasonId))
     .orderBy(asc(tournaments.startDate));
+
+  // Deduplicate by name — the SportsData API occasionally returns the same
+  // tournament with two different IDs (placeholder vs actual entry).
+  const seen = new Set<string>();
+  return rows.filter((t) => {
+    if (seen.has(t.name)) return false;
+    seen.add(t.name);
+    return true;
+  });
 }
 
 export async function getLatestSeason() {
