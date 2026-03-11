@@ -1,14 +1,19 @@
 const BASE_URL =
   "https://site.web.api.espn.com/apis/site/v2/sports/golf";
 
+const CORE_API_BASE =
+  "https://sports.core.api.espn.com/v2/sports/golf/leagues/pga";
+
+const ESPN_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept: "application/json",
+};
+
 async function fetchEspn<T>(path: string): Promise<T> {
   const url = `${BASE_URL}/${path}`;
   const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      Accept: "application/json",
-    },
+    headers: ESPN_HEADERS,
     next: { revalidate: 0 },
   });
   if (!res.ok) {
@@ -38,6 +43,88 @@ export async function fetchEventLeaderboard(
   eventId: number
 ): Promise<EspnLeaderboardResponse> {
   return fetchEspn<EspnLeaderboardResponse>(`leaderboard?event=${eventId}`);
+}
+
+/**
+ * Fetch the full season schedule from ESPN's core API.
+ * Returns all ~48 PGA Tour events for the given year, mapped to EspnTournament shape.
+ * Note: purse is not available from this endpoint; it will be null until sync-results runs.
+ */
+export async function fetchCoreApiSchedule(year: number): Promise<EspnTournament[]> {
+  // Step 1: get paginated list of event $ref links
+  const listRes = await fetch(
+    `${CORE_API_BASE}/events?limit=100&dates=${year}`,
+    { headers: ESPN_HEADERS, next: { revalidate: 0 } }
+  );
+  if (!listRes.ok) {
+    throw new Error(`ESPN core API list error: ${listRes.status} for year ${year}`);
+  }
+  const listData = await listRes.json() as { items?: Array<{ $ref: string }>; count?: number };
+
+  const refs = (listData.items ?? []).map((item) =>
+    item.$ref.replace("sports.core.api.espn.pvt", "sports.core.api.espn.com")
+  );
+
+  if (refs.length === 0) return [];
+
+  // Step 2: fetch all event details concurrently (48 lightweight requests)
+  const settled = await Promise.allSettled(
+    refs.map((ref) =>
+      fetch(ref, { headers: ESPN_HEADERS, next: { revalidate: 0 } }).then(
+        (r) => r.json() as Promise<EspnCoreApiEvent>
+      )
+    )
+  );
+
+  const events: EspnTournament[] = [];
+  for (const result of settled) {
+    if (result.status !== "fulfilled") continue;
+    const e = result.value;
+    if (!e?.id || !e?.name) continue;
+
+    // Map core API "venues" array → our EspnVenue shape
+    const firstVenue = e.venues?.[0];
+    const venue: EspnVenue | undefined = firstVenue
+      ? {
+          fullName: firstVenue.fullName ?? "",
+          address: firstVenue.address,
+        }
+      : undefined;
+
+    events.push({
+      id: e.id,
+      uid: e.uid,
+      name: e.name,
+      shortName: e.shortName,
+      date: e.date,
+      endDate: e.endDate,
+      status: e.status,
+      purse: null, // not available from core API; filled in by sync-results
+      venue,
+      courses: e.courses,
+    });
+  }
+
+  // Sort chronologically
+  events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return events;
+}
+
+/** Raw shape returned by the ESPN core API single-event endpoint. */
+interface EspnCoreApiEvent {
+  id: string;
+  uid?: string;
+  name: string;
+  shortName?: string;
+  date: string;
+  endDate?: string;
+  status: EspnTournamentStatus;
+  purse?: number;
+  venues?: Array<{
+    fullName?: string;
+    address?: { city?: string; state?: string; country?: string };
+  }>;
+  courses?: EspnCourse[];
 }
 
 /** Returns the current PGA season year (the year the season ends). */
