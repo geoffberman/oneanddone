@@ -133,6 +133,7 @@ export default async function LeaderboardPage({
           totalEarnings,
           currentPickName: pickMap.get(e.userId)?.name ?? null,
           currentPickIsAlternate: pickMap.get(e.userId)?.isAlternate ?? false,
+          currentPickGolferId: pickMap.get(e.userId)?.golferId ?? null,
           livePosition: live?.position ?? null,
           liveIsTied: live?.isTied ?? false,
           liveTiedCount: live?.tiedCount ?? 1,
@@ -207,6 +208,7 @@ export default async function LeaderboardPage({
         defaultBoard={isInProgress && currentTournament ? `weekly-${currentTournament.id}` : "season"}
         isLocked={isLocked}
         isInProgress={isInProgress}
+        tournamentName={currentTournament?.name ?? null}
       />
 
       <div className="text-center">

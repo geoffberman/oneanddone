@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Calendar, Check, Clock, Pencil, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { updateGameName } from "@/lib/actions/games";
+import { TournamentInfoButton } from "@/components/tournament-info-button";
 
 interface GameTileProps {
   gameId: number;
@@ -138,6 +139,9 @@ export function GameTile({
           <div className="flex items-center gap-1.5">
             <Calendar className="h-3.5 w-3.5 text-green-600" />
             <span>{currentTournamentName}</span>
+            <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+              <TournamentInfoButton tournamentName={currentTournamentName} />
+            </div>
           </div>
           {pickDeadline && (
             <div className="flex items-center gap-1.5">

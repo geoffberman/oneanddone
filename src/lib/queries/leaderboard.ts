@@ -25,6 +25,7 @@ export interface LeaderboardEntry {
   hasCurrentPick?: boolean;            // whether user has a pick for the current tournament
   currentPickName?: string | null;     // set only after picks are locked
   currentPickIsAlternate?: boolean;
+  currentPickGolferId?: number | null;
   // Live tournament data (set when a tournament is in progress or just finished)
   livePosition?: number | null;
   liveIsTied?: boolean;
@@ -52,7 +53,7 @@ export async function getUsersWithPickForTournament(
 export async function getCurrentTournamentPickNames(
   gameId: number,
   tournamentId: number
-): Promise<Map<string, { name: string; isAlternate: boolean }>> {
+): Promise<Map<string, { name: string; isAlternate: boolean; golferId: number }>> {
   const rows = await db
     .select({
       userId: picks.userId,
@@ -82,7 +83,7 @@ export async function getCurrentTournamentPickNames(
     golferRows.map((g) => [g.id, `${g.firstName} ${g.lastName}`])
   );
 
-  const result = new Map<string, { name: string; isAlternate: boolean }>();
+  const result = new Map<string, { name: string; isAlternate: boolean; golferId: number }>();
   for (const row of rows) {
     const displayId = row.activeGolferId ?? row.primaryGolferId;
     const name = golferMap.get(displayId) ?? null;
@@ -90,6 +91,7 @@ export async function getCurrentTournamentPickNames(
       result.set(row.userId, {
         name,
         isAlternate: row.alternateActivated,
+        golferId: displayId,
       });
     }
   }
