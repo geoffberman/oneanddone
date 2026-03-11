@@ -635,7 +635,7 @@ export async function syncEarnings(gameId: number) {
     // Bring all completed tournaments back into the 7-day sync window
     await db.execute(sql`UPDATE tournaments SET updated_at = NOW() WHERE is_over = true`);
 
-    const { syncResults } = await import("@/lib/sportsdata/sync-results");
+    const { syncResults } = await import("@/lib/espn/sync-results");
     const results = await syncResults();
 
     const synced = results.filter((r: { error?: string }) => !r.error);
