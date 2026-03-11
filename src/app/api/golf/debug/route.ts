@@ -14,6 +14,11 @@ import { matchesTournamentName } from "@/lib/sportsdata/tournament-match";
 //   GET /api/golf/debug?action=history&name=Genesis+Invitational → test full history flow
 
 export async function GET(request: NextRequest) {
+  const secret = request.nextUrl.searchParams.get("secret");
+  if (secret !== process.env.DEBUG_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const action = request.nextUrl.searchParams.get("action");
 
   try {
