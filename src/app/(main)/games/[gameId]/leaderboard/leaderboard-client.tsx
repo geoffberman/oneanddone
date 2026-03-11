@@ -11,6 +11,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatCurrency } from "@/lib/utils";
 import { Trophy, Check, X } from "lucide-react";
+import { GolferInfoButton } from "@/components/golfer-info-button";
 
 interface LeaderboardEntry {
   userId: string;
@@ -22,6 +23,7 @@ interface LeaderboardEntry {
   hasCurrentPick?: boolean;
   currentPickName?: string | null;
   currentPickIsAlternate?: boolean;
+  currentPickGolferId?: number | null;
   livePosition?: number | null;
   liveIsTied?: boolean;
   liveTiedCount?: number;
@@ -44,6 +46,7 @@ interface Props {
   defaultBoard?: string;
   isLocked: boolean;
   isInProgress: boolean;
+  tournamentName?: string | null;
 }
 
 function formatScoreToPar(score: number | null | undefined): string {
@@ -104,6 +107,7 @@ export function LeaderboardClient({
   defaultBoard,
   isLocked,
   isInProgress,
+  tournamentName,
 }: Props) {
   const [selected, setSelected] = useState(defaultBoard || options[0]?.id || "");
   const router = useRouter();
@@ -196,18 +200,27 @@ export function LeaderboardClient({
                           )}
                         </p>
                         {isLocked && entry.currentPickName ? (
-                          <p className="text-xs text-neutral-500 truncate">
-                            {entry.currentPickName}
-                            {entry.currentPickIsAlternate && (
-                              <span className="ml-1 text-neutral-400">(alt)</span>
+                          <div className="flex items-center gap-0.5 text-xs text-neutral-500">
+                            <span className="truncate">
+                              {entry.currentPickName}
+                              {entry.currentPickIsAlternate && (
+                                <span className="ml-1 text-neutral-400">(alt)</span>
+                              )}
+                              {/* On non-weekly boards, show score inline with golfer name */}
+                              {!isWeeklyBoard && liveScore && (
+                                <span className={`ml-1.5 font-semibold ${liveScoreColor(entry)}`}>
+                                  · {liveScore}
+                                </span>
+                              )}
+                            </span>
+                            {entry.currentPickGolferId && tournamentName && (
+                              <GolferInfoButton
+                                golferId={entry.currentPickGolferId}
+                                golferName={entry.currentPickName}
+                                tournamentName={tournamentName}
+                              />
                             )}
-                            {/* On non-weekly boards, show score inline with golfer name */}
-                            {!isWeeklyBoard && liveScore && (
-                              <span className={`ml-1.5 font-semibold ${liveScoreColor(entry)}`}>
-                                · {liveScore}
-                              </span>
-                            )}
-                          </p>
+                          </div>
                         ) : isWeeklyBoard ? (
                           <p className="text-xs text-neutral-500 flex items-center gap-1">
                             <PickStatusIndicator hasPick={entry.hasCurrentPick ?? false} />

@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import { AnnouncementForm } from "./announcement-form";
 import { EmailMembersForm } from "./email-members-form";
+import { TournamentInfoButton } from "@/components/tournament-info-button";
+import { GolferInfoButton } from "@/components/golfer-info-button";
 
 export default async function GameHomePage({
   params,
@@ -125,6 +127,9 @@ export default async function GameHomePage({
                   ? currentTournament.name
                   : "No upcoming tournament"}
               </CardTitle>
+              {currentTournament && (
+                <TournamentInfoButton tournamentName={currentTournament.name} />
+              )}
             </div>
             {currentTournament && (
               <Badge
@@ -178,11 +183,27 @@ export default async function GameHomePage({
                         · {liveScoreStr}
                       </span>
                     )}
+                    <GolferInfoButton
+                      golferId={currentPick.activeGolferId ?? currentPick.primaryGolferId}
+                      golferName={
+                        (currentPick.alternateActivated && currentPick.activeName
+                          ? currentPick.activeName
+                          : currentPick.primaryName) ?? ""
+                      }
+                      tournamentName={currentTournament!.name}
+                      iconClassName="h-3.5 w-3.5"
+                    />
                   </div>
-                  {!currentPick.alternateActivated && currentPick.alternateName && (
-                    <p className="text-xs text-green-600">
-                      Alt: {currentPick.alternateName}
-                    </p>
+                  {!currentPick.alternateActivated && currentPick.alternateName && currentPick.alternateGolferId && (
+                    <div className="flex items-center gap-1 text-xs text-green-600">
+                      <span>Alt: {currentPick.alternateName}</span>
+                      <GolferInfoButton
+                        golferId={currentPick.alternateGolferId}
+                        golferName={currentPick.alternateName}
+                        tournamentName={currentTournament!.name}
+                        iconClassName="h-3 w-3"
+                      />
+                    </div>
                   )}
                 </div>
               </div>
