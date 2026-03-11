@@ -1,5 +1,5 @@
 const BASE_URL =
-  "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga";
+  "https://site.web.api.espn.com/apis/site/v2/sports/golf";
 
 async function fetchEspn<T>(path: string): Promise<T> {
   const url = `${BASE_URL}/${path}`;
@@ -52,8 +52,12 @@ export function getCurrentSeasonYear(): number {
 // ─── ESPN Response Types ──────────────────────────────────────────────────────
 
 export interface EspnLeaderboardResponse {
-  season: EspnSeason;
-  tournaments: EspnTournament[];
+  /** Present on older /golf/pga endpoint responses (now unused). */
+  season?: EspnSeason;
+  /** New /golf endpoint returns top-level "events" array. */
+  events?: EspnTournament[];
+  /** Old /golf/pga endpoint returned top-level "tournaments" array. */
+  tournaments?: EspnTournament[];
 }
 
 export interface EspnSeason {
@@ -67,8 +71,12 @@ export interface EspnTournament {
   name: string;
   shortName?: string;
   status: EspnTournamentStatus;
-  date: EspnDateRange;
+  /** Flat ISO date string (new /golf endpoint). */
+  date: string;
+  /** Flat ISO end-date string (new /golf endpoint). */
+  endDate?: string;
   purse?: string | number | null;
+  displayPurse?: string;
   venue?: EspnVenue;
   courses?: EspnCourse[];
   competitors?: EspnCompetitor[];

@@ -46,7 +46,7 @@ export async function syncField() {
     };
   }
 
-  const espnTournamentsInSeason = seasonData.tournaments ?? [];
+  const espnTournamentsInSeason = seasonData.events ?? seasonData.tournaments ?? [];
 
   for (const tournament of allTournaments) {
     try {
@@ -62,10 +62,11 @@ export async function syncField() {
       if (players.length === 0) {
         try {
           const eventData = await fetchEventLeaderboard(tournament.externalTournamentId);
+          const eventEvents = eventData.events ?? eventData.tournaments ?? [];
           const eventTournament =
-            eventData.tournaments?.find(
+            eventEvents.find(
               (t) => parseInt(t.id, 10) === tournament.externalTournamentId
-            ) ?? eventData.tournaments?.[0];
+            ) ?? eventEvents[0];
           if (eventTournament?.competitors && eventTournament.competitors.length > 0) {
             espnTournament = eventTournament;
             players = eventTournament.competitors;
