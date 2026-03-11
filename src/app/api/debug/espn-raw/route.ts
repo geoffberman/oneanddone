@@ -8,31 +8,12 @@ const HEADERS = {
   Accept: "application/json",
 };
 
-async function probe(url: string) {
-  try {
-    const res = await fetch(url, { headers: HEADERS });
-    const text = await res.text();
-    let parsed: unknown = null;
-    try { parsed = JSON.parse(text); } catch { /* ignore */ }
-    const topKeys = parsed && typeof parsed === "object" ? Object.keys(parsed as object) : [];
-    // Count events/tournaments at top level
-    const events = (parsed as Record<string, unknown>)?.events;
-    const tournaments = (parsed as Record<string, unknown>)?.tournaments;
-    const count = Array.isArray(events) ? events.length : Array.isArray(tournaments) ? tournaments.length : "n/a";
-    const firstName = Array.isArray(events) && events.length > 0
-      ? (events[0] as Record<string, unknown>).name
-      : Array.isArray(tournaments) && tournaments.length > 0
-      ? (tournaments[0] as Record<string, unknown>).name
-      : null;
-    const lastName = Array.isArray(events) && events.length > 1
-      ? (events[events.length - 1] as Record<string, unknown>).name
-      : Array.isArray(tournaments) && tournaments.length > 1
-      ? (tournaments[tournaments.length - 1] as Record<string, unknown>).name
-      : null;
-    return { status: res.status, topKeys, count, firstName, lastName, preview: text.slice(0, 200) };
-  } catch (err) {
-    return { status: -1, topKeys: [], count: "err", firstName: null, lastName: null, preview: String(err) };
-  }
+async function fetchJson(url: string) {
+  const res = await fetch(url, { headers: HEADERS });
+  const text = await res.text();
+  let parsed: unknown = null;
+  try { parsed = JSON.parse(text); } catch { /* ignore */ }
+  return { status: res.status, parsed, text };
 }
 
 export async function GET(request: NextRequest) {
@@ -43,19 +24,54 @@ export async function GET(request: NextRequest) {
 
   const year = new Date().getFullYear();
 
-  const results = await Promise.all([
-    probe(`https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?season=${year}`),
-    probe(`https://site.web.api.espn.com/apis/site/v2/sports/golf/schedule?season=${year}`),
-    probe(`https://site.web.api.espn.com/apis/site/v2/sports/golf/scoreboard?season=${year}&seasontype=2&limit=100`),
-    probe(`https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/schedule?season=${year}`),
-    probe(`https://sports.core.api.espn.com/v2/sports/golf/leagues/pga/events?limit=100&dates=${year}`),
-  ]);
+  // Step 1: get the list of event refs from core API
+  const listUrl = `https://sports.core.api.espn.com/v2/sports/golf/leagues/pga/events?limit=100&dates=${year}`;
+  const { status: listStatus, parsed: listParsed } = await fetchJson(listUrl);
+
+  const items = (listParsed as Record<string, unknown>)?.items;
+  const firstRef = Array.isArray(items) && items.length > 0
+    ? (items[0] as Record<string, unknown>).$ref as string
+    : null;
+  const lastRef = Array.isArray(items) && items.length > 1
+    ? (items[items.length - 1] as Record<string, unknown>).$ref as string
+    : null;
+
+  // Step 2: fetch the detail of the first event via the core API $ref
+  let firstEventDetail: unknown = null;
+  let firstEventKeys: string[] = [];
+  if (firstRef) {
+    // Convert internal pvt URL to public URL if needed
+    const publicRef = firstRef.replace("sports.core.api.espn.pvt", "sports.core.api.espn.com");
+    const { status: detailStatus, parsed: detailParsed } = await fetchJson(publicRef);
+    firstEventDetail = { status: detailStatus, allKeys: detailParsed && typeof detailParsed === "object" ? Object.keys(detailParsed as object) : [] };
+    firstEventKeys = detailParsed && typeof detailParsed === "object" ? Object.keys(detailParsed as object) : [];
+
+    // Show key fields we care about for sync-schedule
+    if (detailParsed && typeof detailParsed === "object") {
+      const d = detailParsed as Record<string, unknown>;
+      firstEventDetail = {
+        httpStatus: detailStatus,
+        id: d.id,
+        name: d.name,
+        shortName: d.shortName,
+        date: d.date,
+        endDate: d.endDate,
+        status: d.status,
+        purse: d.purse,
+        displayPurse: d.displayPurse,
+        venue: d.venue,
+        allKeys: firstEventKeys,
+      };
+    }
+  }
 
   return NextResponse.json({
-    "1_leaderboard_season": results[0],
-    "2_golf_schedule": results[1],
-    "3_golf_scoreboard": results[2],
-    "4_golf_pga_schedule": results[3],
-    "5_core_api_pga_events": results[4],
+    coreApiList: {
+      status: listStatus,
+      count: (listParsed as Record<string, unknown>)?.count,
+      firstRef,
+      lastRef,
+    },
+    firstEventDetail,
   });
 }
