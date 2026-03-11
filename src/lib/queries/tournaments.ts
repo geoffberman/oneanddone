@@ -69,12 +69,15 @@ export async function getSeasonTournaments(seasonId: number) {
     .where(eq(tournaments.seasonId, seasonId))
     .orderBy(asc(tournaments.startDate));
 
-  // Deduplicate by name — the SportsData API occasionally returns the same
-  // tournament with two different IDs (placeholder vs actual entry).
+  // Deduplicate by start date — the same PGA Tour event sometimes has two DB
+  // rows with different IDs and slightly different names (e.g. "Arnold Palmer
+  // Invitational" vs "Arnold Palmer Invitational presented by Mastercard").
+  // Each event occupies a unique week so same start day = same tournament.
   const seen = new Set<string>();
   return rows.filter((t) => {
-    if (seen.has(t.name)) return false;
-    seen.add(t.name);
+    const day = new Date(t.startDate).toISOString().slice(0, 10);
+    if (seen.has(day)) return false;
+    seen.add(day);
     return true;
   });
 }
