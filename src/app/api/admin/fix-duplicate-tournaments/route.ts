@@ -30,7 +30,8 @@ async function getOldDuplicates() {
       and(
         lt(tournaments.externalTournamentId, 10000),          // old-style ESPN IDs
         gte(tournaments.startDate, new Date("2026-01-01")),   // given a 2026 date
-        eq(tournaments.canceled, false)
+        eq(tournaments.canceled, false),
+        eq(tournaments.isOver, false)                         // skip completed ones that have picks
       )
     );
 }
