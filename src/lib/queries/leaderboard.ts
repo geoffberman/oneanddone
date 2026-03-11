@@ -150,8 +150,40 @@ export async function getSubGameLeaderboard(
     .from(subGameTournaments)
     .where(eq(subGameTournaments.subGameId, subGameId));
 
-  const tournamentIds = subGameTourns.map((t) => t.tournamentId);
-  if (tournamentIds.length === 0) return [];
+  const rawIds = subGameTourns.map((t) => t.tournamentId);
+  if (rawIds.length === 0) return [];
+
+  // Expand to include duplicate DB entries for the same real-world tournament
+  // (e.g. "Arnold Palmer Invitational" and "...presented by Mastercard" share
+  // the same start week but may have different IDs; picks belong to one or the
+  // other depending on when the sync ran).
+  const normalizeForDedup = (name: string) =>
+    name
+      .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
+      .trim()
+      .toLowerCase();
+
+  const selectedTourns = await db
+    .select({ id: tournaments.id, name: tournaments.name, seasonId: tournaments.seasonId })
+    .from(tournaments)
+    .where(inArray(tournaments.id, rawIds));
+
+  const seasonIds = [...new Set(selectedTourns.map((t) => t.seasonId))];
+  const normalizedNames = new Set(selectedTourns.map((t) => normalizeForDedup(t.name)));
+
+  const allInSeasons = await db
+    .select({ id: tournaments.id, name: tournaments.name })
+    .from(tournaments)
+    .where(inArray(tournaments.seasonId, seasonIds));
+
+  const tournamentIds = [
+    ...new Set([
+      ...rawIds,
+      ...allInSeasons
+        .filter((t) => normalizedNames.has(normalizeForDedup(t.name)))
+        .map((t) => t.id),
+    ]),
+  ];
 
   const rows = await db
     .select({
