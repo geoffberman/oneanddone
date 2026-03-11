@@ -61,6 +61,17 @@ export async function GET(request: NextRequest) {
     usedGolferCount = ugRows.length;
   }
 
+  // If ?apply=true is passed and it's safe, apply the fix directly from the browser
+  const apply = request.nextUrl.searchParams.get("apply") === "true";
+  if (apply && pickCount === 0 && ids.length > 0) {
+    const now = new Date();
+    await db
+      .update(tournaments)
+      .set({ canceled: true, updatedAt: now })
+      .where(inArray(tournaments.id, ids));
+    return NextResponse.json({ message: "Fixed", canceledIds: ids });
+  }
+
   return NextResponse.json({
     wouldCancel: oldDups,
     count: oldDups.length,
