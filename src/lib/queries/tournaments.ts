@@ -69,20 +69,64 @@ export async function getSeasonTournaments(seasonId: number) {
     .where(eq(tournaments.seasonId, seasonId))
     .orderBy(asc(tournaments.startDate));
 
-  // Deduplicate by normalized name — the same PGA Tour event sometimes has
-  // two DB rows with different IDs (e.g. "Arnold Palmer Invitational" vs
-  // "Arnold Palmer Invitational presented by Mastercard"). Strip sponsor
-  // suffixes before comparing so those collapse to one entry.
-  const seen = new Set<string>();
-  return rows.filter((t) => {
-    const normalized = t.name
+  // Step 1 — deduplicate by normalized name.
+  // The same PGA Tour event sometimes has two DB rows with different IDs
+  // (e.g. "Arnold Palmer Invitational" vs "Arnold Palmer Invitational
+  // presented by Mastercard"). Strip sponsor suffixes and leading "The"
+  // before comparing so those collapse to one entry. Keep the row with the
+  // highest purse; fall back to whichever comes first if purses are equal.
+  const normalizeForDedup = (name: string) =>
+    name
+      .replace(/^the\s+/i, "")
       .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
       .trim()
       .toLowerCase();
-    if (seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  });
+
+  const byNorm = new Map<string, (typeof rows)[0]>();
+  for (const t of rows) {
+    const norm = normalizeForDedup(t.name);
+    const existing = byNorm.get(norm);
+    if (!existing) {
+      byNorm.set(norm, t);
+    } else {
+      const tPurse = parseFloat(t.purse ?? "0") || 0;
+      const exPurse = parseFloat(existing.purse ?? "0") || 0;
+      if (tPurse > exPurse) byNorm.set(norm, t);
+    }
+  }
+  const deduped = [...byNorm.values()].sort(
+    (a, b) => a.startDate.getTime() - b.startDate.getTime()
+  );
+
+  // Step 2 — remove secondary events on the same start date.
+  // When the PGA Tour runs an opposite-field event the same week as a major
+  // or flagship event, the secondary event has a meaningfully lower purse.
+  // Keep only the highest-purse tournament per start date; if two events
+  // share a date and one has zero/null purse, keep the one with a purse.
+  // If neither has a purse (or they're equal), keep both.
+  const byDate = new Map<string, (typeof deduped)[0]>();
+  const secondaryIds = new Set<number>();
+  for (const t of deduped) {
+    const day = t.startDate.toISOString().slice(0, 10);
+    const existing = byDate.get(day);
+    if (!existing) {
+      byDate.set(day, t);
+    } else {
+      const tPurse = parseFloat(t.purse ?? "0") || 0;
+      const exPurse = parseFloat(existing.purse ?? "0") || 0;
+      if (tPurse === exPurse) {
+        // Can't determine which is secondary; keep both
+        continue;
+      }
+      if (tPurse > exPurse) {
+        secondaryIds.add(existing.id);
+        byDate.set(day, t);
+      } else {
+        secondaryIds.add(t.id);
+      }
+    }
+  }
+  return deduped.filter((t) => !secondaryIds.has(t.id));
 }
 
 export async function getLatestSeason() {
