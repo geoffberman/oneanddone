@@ -10,6 +10,7 @@ import {
   parsePosition,
   extractEarnings,
   getCompetitors,
+  normalizeName,
 } from "@/lib/espn/client";
 
 export const maxDuration = 60;
@@ -28,16 +29,6 @@ interface YearResult {
 // Simple in-memory cache (key → { data, ts })
 const cache = new Map<string, { data: YearResult[]; ts: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-
-function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/^the\s+/, "")
-    .replace(/\s+(presented?|powered|sponsored|pres\.?)\s+by\s+.*/i, "")
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function fuzzyMatch(a: string, b: string): boolean {
   const na = normalizeName(a);

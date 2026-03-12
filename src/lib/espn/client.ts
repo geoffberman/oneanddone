@@ -261,6 +261,20 @@ export interface EspnAthlete {
 // ─── Helper Utilities ─────────────────────────────────────────────────────────
 
 /**
+ * Normalize a tournament name for fuzzy matching.
+ * Strips leading "The", sponsor suffixes, punctuation, and lowercases.
+ */
+export function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/^the\s+/, "")
+    .replace(/\s+(presented?|powered|sponsored|pres\.?)\s+by\s+.*/i, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Split ESPN displayName (e.g. "Scottie Scheffler") into first + last.
  * Splits at the last space so "Byeong Hun An" → { first: "Byeong Hun", last: "An" }.
  */
