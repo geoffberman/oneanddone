@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  fetchCurrentSeason,
-  fetchTournamentsBySeason,
-  fetchLeaderboard,
-} from "@/lib/sportsdata/client";
-import { matchesTournamentName } from "@/lib/sportsdata/tournament-match";
+  fetchCoreApiSchedule,
+  fetchEventLeaderboard,
+  getCurrentSeasonYear,
+  getCompetitors,
+} from "@/lib/espn/client";
 
-// Debug-only endpoint – remove before production
+// Debug-only endpoint
 // Usage:
-//   GET /api/golf/debug?action=seasons               → current season
-//   GET /api/golf/debug?action=tournaments&year=2025  → all tournament names for year
-//   GET /api/golf/debug?action=leaderboard&id=521     → raw leaderboard for tournament ID
-//   GET /api/golf/debug?action=history&name=Genesis+Invitational → test full history flow
+//   GET /api/golf/debug?secret=<DEBUG_SECRET>&action=season              → current season year
+//   GET /api/golf/debug?secret=<DEBUG_SECRET>&action=tournaments&year=2025 → all tournament names for year
+//   GET /api/golf/debug?secret=<DEBUG_SECRET>&action=leaderboard&id=<espnEventId> → raw leaderboard for event
 
 export async function GET(request: NextRequest) {
   const secret = request.nextUrl.searchParams.get("secret");
@@ -22,159 +21,55 @@ export async function GET(request: NextRequest) {
   const action = request.nextUrl.searchParams.get("action");
 
   try {
-    if (action === "seasons") {
-      const season = await fetchCurrentSeason();
-      return NextResponse.json(season);
+    if (action === "season") {
+      const year = getCurrentSeasonYear();
+      return NextResponse.json({ year });
     }
 
     if (action === "tournaments") {
       const yearStr = request.nextUrl.searchParams.get("year");
-      const year = yearStr ? parseInt(yearStr) : (await fetchCurrentSeason()).Season;
-      const tournaments = await fetchTournamentsBySeason(year);
-      return NextResponse.json(
-        tournaments.map((t) => ({
-          id: t.TournamentID,
-          name: t.Name,
-          start: t.StartDate,
-          isOver: t.IsOver,
-        }))
-      );
-    }
-
-    if (action === "leaderboard") {
-      const idStr = request.nextUrl.searchParams.get("id");
-      if (!idStr) return NextResponse.json({ error: "id required" }, { status: 400 });
-      const leaderboard = await fetchLeaderboard(parseInt(idStr));
+      const year = yearStr ? parseInt(yearStr) : getCurrentSeasonYear();
+      const espnTournaments = await fetchCoreApiSchedule(year);
       return NextResponse.json({
-        tournament: leaderboard.Tournament?.Name,
-        playerCount: leaderboard.Players?.length,
-        playersIsNull: leaderboard.Players === null,
-        playersIsUndefined: leaderboard.Players === undefined,
-        top5: leaderboard.Players?.slice(0, 5).map((p) => ({
-          name: `${p.FirstName} ${p.LastName}`,
-          rank: p.Rank,
-          score: p.TotalScore,
-          madeCut: p.MadeCut,
+        count: espnTournaments.length,
+        tournaments: espnTournaments.map((t) => ({
+          id: t.id,
+          name: t.name,
+          date: t.date,
+          state: t.status.type.state,
         })),
       });
     }
 
-    if (action === "history") {
-      const name = request.nextUrl.searchParams.get("name");
-      if (!name) return NextResponse.json({ error: "name required" }, { status: 400 });
-
-      const currentSeason = await fetchCurrentSeason();
-      const currentYear = currentSeason.SeasonID;
-      const diagnostics: Record<string, unknown>[] = [];
-
-      for (const year of [currentYear - 1, currentYear - 2, currentYear - 3]) {
-        const diag: Record<string, unknown> = { year };
-        try {
-          const tournaments = await fetchTournamentsBySeason(year);
-          diag.tournamentCount = tournaments.length;
-
-          const match = tournaments.find((t) => matchesTournamentName(t.Name, name));
-          if (!match) {
-            diag.matched = false;
-            // Show closest names for debugging
-            diag.allNames = tournaments.map((t) => t.Name).slice(0, 10);
-            diagnostics.push(diag);
-            continue;
-          }
-
-          diag.matched = true;
-          diag.matchedName = match.Name;
-          diag.matchedId = match.TournamentID;
-          diag.isOver = match.IsOver;
-
-          const leaderboard = await fetchLeaderboard(match.TournamentID);
-          diag.playersIsNull = leaderboard.Players === null;
-          diag.playersIsUndefined = leaderboard.Players === undefined;
-          diag.playerCount = leaderboard.Players?.length ?? 0;
-
-          const players = leaderboard.Players ?? [];
-          const withRank = players.filter((p) => p.Rank > 0 && p.MadeCut === 1);
-          diag.playersWithRank = withRank.length;
-
-          if (withRank.length > 0) {
-            diag.top3 = withRank
-              .sort((a, b) => a.Rank - b.Rank)
-              .slice(0, 3)
-              .map((p) => `${p.Rank}. ${p.FirstName} ${p.LastName}`);
-          }
-        } catch (err) {
-          diag.error = String(err);
-        }
-        diagnostics.push(diag);
+    if (action === "leaderboard") {
+      const idStr = request.nextUrl.searchParams.get("id");
+      if (!idStr) {
+        return NextResponse.json({ error: "id is required" }, { status: 400 });
       }
-
-      return NextResponse.json({ currentYear, searchName: name, years: diagnostics });
+      const id = parseInt(idStr);
+      const data = await fetchEventLeaderboard(id);
+      const allEvents = data.events ?? data.tournaments ?? [];
+      const event =
+        allEvents.find((t) => parseInt(t.id, 10) === id) ?? allEvents[0];
+      const players = event ? getCompetitors(event) : [];
+      return NextResponse.json({
+        event: event?.name,
+        state: event?.status?.type?.state,
+        playerCount: players.length,
+        samplePlayers: players.slice(0, 5).map((p) => ({
+          id: p.id,
+          name: p.athlete.displayName,
+          position: p.status?.position?.shortDisplayName,
+          score: p.score?.value,
+        })),
+      });
     }
 
-    // ?action=golfer&name=<tournament name>&playerId=<externalPlayerId>
-    // Tests the exact flow used by /api/golf/golfer-results for a specific player.
-    if (action === "golfer") {
-      const name = request.nextUrl.searchParams.get("name");
-      const playerIdStr = request.nextUrl.searchParams.get("playerId");
-      if (!name || !playerIdStr) {
-        return NextResponse.json({ error: "name and playerId required" }, { status: 400 });
-      }
-      const externalPlayerId = parseInt(playerIdStr);
-
-      const currentSeason = await fetchCurrentSeason();
-      const currentYear = currentSeason.Season;
-      const diagnostics: Record<string, unknown>[] = [];
-
-      for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
-        const diag: Record<string, unknown> = { year };
-        try {
-          const tourns = await fetchTournamentsBySeason(year);
-          const match = tourns.find((t) => matchesTournamentName(t.Name, name));
-          if (!match) {
-            diag.matched = false;
-            diag.sampleNames = tourns.slice(0, 5).map((t) => t.Name);
-            diagnostics.push(diag);
-            continue;
-          }
-          diag.matched = true;
-          diag.matchedName = match.Name;
-
-          const leaderboard = await fetchLeaderboard(match.TournamentID);
-          const players = leaderboard.Players ?? [];
-          diag.playerCount = players.length;
-
-          const player = players.find((p) => p.PlayerID === externalPlayerId);
-          if (!player) {
-            diag.playerFound = false;
-            diag.samplePlayerIds = players.slice(0, 5).map((p) => p.PlayerID);
-          } else {
-            diag.playerFound = true;
-            diag.rank = player.Rank;
-            diag.madeCut = player.MadeCut;
-            diag.earnings = player.Earnings;
-          }
-        } catch (err) {
-          diag.error = String(err);
-        }
-        diagnostics.push(diag);
-      }
-
-      return NextResponse.json({ currentYear, searchName: name, externalPlayerId, years: diagnostics });
-    }
-
-    return NextResponse.json({
-      usage: [
-        "?action=seasons",
-        "?action=tournaments&year=2025",
-        "?action=leaderboard&id=<tournamentId>",
-        "?action=history&name=<tournament name>",
-        "?action=golfer&name=<tournament name>&playerId=<externalPlayerId>",
-      ],
-    });
-  } catch (e) {
     return NextResponse.json(
-      { error: String(e) },
-      { status: 500 }
+      { error: "Unknown action. Use: season, tournaments, leaderboard" },
+      { status: 400 }
     );
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

@@ -1,11 +1,22 @@
 import { db } from "@/db";
-import { sql } from "drizzle-orm";
+import { tournaments } from "@/db/schema";
+import { eq, and, lt, sql } from "drizzle-orm";
 import {
   fetchCoreApiSchedule,
   getCurrentSeasonYear,
   parsePurse,
   getTournamentLocation,
 } from "./client";
+
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/^the\s+/, "")
+    .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export async function syncSchedule() {
   const year = getCurrentSeasonYear();
@@ -32,6 +43,23 @@ export async function syncSchedule() {
   // Must run BEFORE the upsert so old SportsData rows (id < 100000) get the
   // ESPN ID first. Otherwise the upsert in Step 2 inserts a duplicate row and
   // the subsequent UPDATE here hits a unique-constraint violation.
+  //
+  // Uses fuzzy name matching (strips sponsor suffixes, leading "The", etc.)
+  // so that e.g. "Memorial Tournament" matches "Memorial Tournament presented by Workday".
+  const oldRows = await db
+    .select({
+      id: tournaments.id,
+      name: tournaments.name,
+      externalTournamentId: tournaments.externalTournamentId,
+    })
+    .from(tournaments)
+    .where(
+      and(
+        eq(tournaments.seasonId, seasonId),
+        lt(tournaments.externalTournamentId, 100000)
+      )
+    );
+
   let migratedCount = 0;
   for (const t of espnTournaments) {
     const espnId = parseInt(t.id, 10);
@@ -40,20 +68,25 @@ export async function syncSchedule() {
     const isOver = t.status.type.completed && t.status.type.state === "post";
     const isInProgress = t.status.type.state === "in";
 
-    const result = await db.execute(sql`
-      UPDATE tournaments
-      SET
-        external_tournament_id = ${espnId},
-        is_over                = ${isOver},
-        is_in_progress         = ${isInProgress},
-        updated_at             = ${now}
-      WHERE
-        season_id              = ${seasonId}
-        AND LOWER(name)        = LOWER(${t.name})
-        AND external_tournament_id != ${espnId}
-        AND external_tournament_id < 100000
-    `);
-    migratedCount += result.rowCount ?? 0;
+    const normEspn = normalizeName(t.name);
+    const match = oldRows.find(
+      (r) =>
+        r.externalTournamentId !== espnId &&
+        normalizeName(r.name) === normEspn
+    );
+
+    if (match) {
+      await db.execute(sql`
+        UPDATE tournaments
+        SET
+          external_tournament_id = ${espnId},
+          is_over                = ${isOver},
+          is_in_progress         = ${isInProgress},
+          updated_at             = ${now}
+        WHERE id = ${match.id}
+      `);
+      migratedCount++;
+    }
   }
 
   // ── Step 2: Upsert via ESPN ID ─────────────────────────────────────────────

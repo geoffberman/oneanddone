@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolvePicks } from "@/lib/sportsdata/resolve-picks";
+import { resolvePicks } from "@/lib/espn/resolve-picks";
 
 export const maxDuration = 60;
 
