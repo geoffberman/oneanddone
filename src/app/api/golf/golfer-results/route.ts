@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import {
   getCurrentSeasonYear,
   fetchCoreApiSchedule,
+  fetchLeaderboard,
   fetchEventLeaderboard,
   parsePosition,
   extractEarnings,
@@ -75,13 +76,27 @@ async function getGolferTournamentHistory(
   // Check current year + last year
   for (const year of [currentYear, currentYear - 1]) {
     try {
-      const espnId = await findEspnEventId(tournamentName, year);
-      if (!espnId || isNaN(espnId)) continue;
+      // Strategy 1: season-level leaderboard (reliable for historical/completed data)
+      let espnEvent = null;
+      try {
+        const data = await fetchLeaderboard(year);
+        const allEvents = data.events ?? data.tournaments ?? [];
+        espnEvent = allEvents.find((t) =>
+          fuzzyMatch(t.name, tournamentName) && t.status?.type?.state === "post"
+        ) ?? null;
+      } catch { /* fall through */ }
 
-      const data = await fetchEventLeaderboard(espnId);
-      const allEvents = data.events ?? data.tournaments ?? [];
-      const espnEvent =
-        allEvents.find((t) => parseInt(t.id, 10) === espnId) ?? allEvents[0];
+      // Strategy 2: event-specific leaderboard (must be completed — guard against live redirects)
+      if (!espnEvent) {
+        const espnId = await findEspnEventId(tournamentName, year);
+        if (!espnId || isNaN(espnId)) continue;
+        const data = await fetchEventLeaderboard(espnId);
+        const allEvents = data.events ?? data.tournaments ?? [];
+        const candidate = allEvents.find((t) => parseInt(t.id, 10) === espnId) ?? allEvents[0];
+        // Reject live/non-completed events to prevent current-year data polluting history
+        if (candidate?.status?.type?.state === "post") espnEvent = candidate;
+      }
+
       if (!espnEvent) continue;
 
       const isOver =
@@ -121,23 +136,17 @@ async function getGolferTournamentHistory(
 
       let position = parsePosition(pos);
 
-      // For completed events where status.position isn't populated, derive from total strokes rank.
-      // Linescores are CUMULATIVE score-to-par; the last period includes playoff holes,
-      // so the playoff winner naturally has a lower value than the loser.
+      // For completed events where status.position isn't populated, derive from total score rank.
+      // Sort by score.value directly (lower = better for both total strokes and score-to-par).
+      // Do NOT use linescores: for historical events ESPN stores per-round stroke counts there
+      // (e.g. 68, 67, 66, 65), not cumulative score-to-par, which would give wrong ordering.
       if (position == null && isOver) {
-        const lastLsValue = (p: typeof player) => {
-          const ls = (p.linescores ?? []).slice().sort((a, b) => a.period.number - b.period.number);
-          const last = ls[ls.length - 1];
-          if (last != null && Math.abs(last.value) <= 100) return last.value;
-          return p.score?.value ?? Infinity;
-        };
         const finishers = players
           .filter((p) => {
             const pu = p.status?.position?.shortDisplayName?.toUpperCase();
             return (
-              (p.linescores?.length ?? 0) >= 4 &&
-              pu !== "WD" && pu !== "DQ" && pu !== "CUT" && pu !== "MC" && pu !== "MDF" &&
-              p.score?.value != null
+              p.score?.value != null &&
+              pu !== "WD" && pu !== "DQ" && pu !== "CUT" && pu !== "MC" && pu !== "MDF"
             );
           })
           .sort((a, b) => {
@@ -145,10 +154,10 @@ async function getGolferTournamentHistory(
             const bWin = b.winner ?? b.score?.winner ?? false;
             if (aWin && !bWin) return -1;
             if (!aWin && bWin) return 1;
-            return lastLsValue(a) - lastLsValue(b);
+            return (a.score!.value) - (b.score!.value);
           });
         const idx = finishers.findIndex((p) => parseInt(p.id, 10) === espnPlayerId);
-        if (idx === -1) continue; // player didn't finish 4 rounds
+        if (idx === -1) continue; // player not in finishers list
         position = idx + 1;
       }
 
