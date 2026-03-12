@@ -102,14 +102,20 @@ async function getGolferTournamentHistory(
       const scoreVal = player.score?.value ?? null;
 
       // For completed events where status.position isn't populated, derive from total strokes rank
-      if (position == null && isOver && scoreVal != null) {
+      if (position == null && isOver) {
+        const sortKey = (p: typeof player) => {
+          const ls = p.linescores ?? [];
+          // Sum ALL linescore periods (includes playoff holes) so playoff winner ranks first
+          return ls.length > 0
+            ? ls.reduce((s, l) => s + l.value, 0)
+            : (p.score?.value ?? Infinity);
+        };
         const finishers = players
           .filter((p) => {
             const pu = p.status?.position?.shortDisplayName?.toUpperCase();
             return (
               (p.linescores?.length ?? 0) >= 4 &&
-              pu !== "WD" && pu !== "DQ" && pu !== "CUT" && pu !== "MC" && pu !== "MDF" &&
-              p.score?.value != null
+              pu !== "WD" && pu !== "DQ" && pu !== "CUT" && pu !== "MC" && pu !== "MDF"
             );
           })
           .sort((a, b) => {
@@ -117,7 +123,7 @@ async function getGolferTournamentHistory(
             const bWin = b.winner ?? b.score?.winner ?? false;
             if (aWin && !bWin) return -1;
             if (!aWin && bWin) return 1;
-            return (a.score!.value) - (b.score!.value);
+            return sortKey(a) - sortKey(b);
           });
         const idx = finishers.findIndex((p) => parseInt(p.id, 10) === espnPlayerId);
         if (idx === -1) continue; // player didn't finish 4 rounds
@@ -127,12 +133,18 @@ async function getGolferTournamentHistory(
       if (position == null) continue; // can't determine position
 
       const par = espnEvent.courses?.[0]?.par ?? 72;
+      const playerLinescores = player.linescores ?? [];
+      // For score display: sum first 4 rounds only (exclude playoff holes)
+      const fourRoundSum =
+        playerLinescores.length >= 4
+          ? playerLinescores.slice(0, 4).reduce((s, l) => s + l.value, 0)
+          : scoreVal;
       const totalScoreToPar =
-        scoreVal == null
+        fourRoundSum == null
           ? 0
-          : Math.abs(scoreVal) <= 100
-            ? Math.round(scoreVal)
-            : Math.round(scoreVal) - par * 4;
+          : Math.abs(fourRoundSum) <= 100
+            ? Math.round(fourRoundSum)
+            : Math.round(fourRoundSum) - par * 4;
 
       results.push({
         year,

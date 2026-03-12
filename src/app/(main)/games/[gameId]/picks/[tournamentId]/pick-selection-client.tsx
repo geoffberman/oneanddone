@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Search, Check, X, AlertCircle, Info } from "lucide-react";
+import { ResearchPanel } from "@/components/research-panel";
 
 interface FieldEntry {
   fieldId: number;
@@ -388,15 +389,18 @@ export function PickSelectionClient({
         </Button>
       )}
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-        <Input
-          placeholder="Search golfers..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      {/* Search + Research */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          <Input
+            placeholder="Search golfers..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <ResearchPanel tournamentName={tournamentName} />
       </div>
 
       {/* Golfer List — grouped by tier */}

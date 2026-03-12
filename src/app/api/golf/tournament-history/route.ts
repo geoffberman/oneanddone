@@ -107,21 +107,33 @@ function buildTop10(players: ReturnType<typeof getCompetitors>, par = 72) {
     const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
     const scoreVal = p.score?.value ?? null;
     const winner = p.winner ?? p.score?.winner ?? false;
-    // score.value > 100 = total strokes (completed historical events); <= 100 = score-to-par (live)
+    const linescores = p.linescores ?? [];
+    // For display: sum the first 4 rounds only (not playoff holes) to get 72-hole total
+    const fourRoundSum =
+      linescores.length >= 4
+        ? linescores.slice(0, 4).reduce((s, ls) => s + ls.value, 0)
+        : scoreVal;
+    // score.value > 100 = total strokes (completed); <= 100 = score-to-par (live)
     const totalScoreToPar =
-      scoreVal == null
+      fourRoundSum == null
         ? 0
-        : Math.abs(scoreVal) <= 100
-          ? Math.round(scoreVal)
-          : Math.round(scoreVal) - totalPar;
+        : Math.abs(fourRoundSum) <= 100
+          ? Math.round(fourRoundSum)
+          : Math.round(fourRoundSum) - totalPar;
+    // For sorting: sum ALL linescores periods including playoff holes
+    // so playoff winner (fewer total strokes) ranks above the loser
+    const sortScore =
+      linescores.length > 0
+        ? linescores.reduce((s, ls) => s + ls.value, 0)
+        : (scoreVal ?? Infinity);
     return {
       pos,
       firstName,
       lastName,
       totalScoreToPar,
-      scoreVal,
+      sortScore,
       winner,
-      rounds: p.linescores?.length ?? 0,
+      rounds: linescores.length,
       earnings: extractEarnings(p.statistics) ?? 0,
     };
   });
@@ -141,14 +153,14 @@ function buildTop10(players: ReturnType<typeof getCompetitors>, par = 72) {
       }));
   }
 
-  // Fallback: for completed events where status.position isn't populated,
-  // sort 4-round finishers by total strokes ascending; winner (playoff) sorts first.
+  // Fallback: sort 4-round finishers by total strokes (sum of ALL linescores, including
+  // playoff holes) ascending so that the playoff winner naturally ranks above the loser.
   const finishers = mapped
-    .filter((p) => p.rounds >= 4 && p.scoreVal != null)
+    .filter((p) => p.rounds >= 4)
     .sort((a, b) => {
       if (a.winner && !b.winner) return -1;
       if (!a.winner && b.winner) return 1;
-      return (a.scoreVal ?? 0) - (b.scoreVal ?? 0);
+      return a.sortScore - b.sortScore;
     });
 
   return finishers.slice(0, 10).map((p, i) => ({
