@@ -91,15 +91,53 @@ async function getGolferTournamentHistory(
       if (!player) continue;
 
       const pos = player.status?.position?.shortDisplayName;
-      const position = parsePosition(pos);
-      if (position == null) continue; // skip CUT/WD/DQ
+      const upper = pos?.toUpperCase();
+
+      // Skip explicitly cut or withdrawn players
+      if (upper === "WD" || upper === "DQ" || upper === "CUT" || upper === "MC" || upper === "MDF") {
+        continue;
+      }
+
+      let position = parsePosition(pos);
+      const scoreVal = player.score?.value ?? null;
+
+      // For completed events where status.position isn't populated, derive from total strokes rank
+      if (position == null && isOver && scoreVal != null) {
+        const finishers = players
+          .filter((p) => {
+            const pu = p.status?.position?.shortDisplayName?.toUpperCase();
+            return (
+              (p.linescores?.length ?? 0) >= 4 &&
+              pu !== "WD" && pu !== "DQ" && pu !== "CUT" && pu !== "MC" && pu !== "MDF" &&
+              p.score?.value != null
+            );
+          })
+          .sort((a, b) => {
+            if (a.score?.winner && !b.score?.winner) return -1;
+            if (!a.score?.winner && b.score?.winner) return 1;
+            return (a.score!.value) - (b.score!.value);
+          });
+        const idx = finishers.findIndex((p) => parseInt(p.id, 10) === espnPlayerId);
+        if (idx === -1) continue; // player didn't finish 4 rounds
+        position = idx + 1;
+      }
+
+      if (position == null) continue; // can't determine position
+
+      const par = espnEvent.courses?.[0]?.par ?? 72;
+      const totalScoreToPar =
+        scoreVal == null
+          ? 0
+          : Math.abs(scoreVal) <= 100
+            ? Math.round(scoreVal)
+            : Math.round(scoreVal) - par * 4;
 
       results.push({
         year,
         position,
-        totalScoreToPar: player.score?.value != null ? Math.round(player.score.value) : 0,
+        totalScoreToPar,
         earnings: extractEarnings(player.statistics) ?? 0,
-        madeCut: madeCut(pos, isOver) ?? false,
+        madeCut: isOver ? true : (madeCut(pos, isOver) ?? false),
       });
     } catch (err) {
       console.error(

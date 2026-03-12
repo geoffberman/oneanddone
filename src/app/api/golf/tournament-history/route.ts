@@ -84,7 +84,8 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
       allEvents.find((t) => parseInt(t.id, 10) === espnId) ?? allEvents[0];
     if (!espnEvent) return years;
 
-    const top10 = buildTop10(getCompetitors(espnEvent));
+    const par = espnEvent.courses?.[0]?.par ?? 72;
+    const top10 = buildTop10(getCompetitors(espnEvent), par);
     if (top10.length > 0) {
       years.push({ year: lastYear, results: top10 });
     }
@@ -99,20 +100,27 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
   return years;
 }
 
-function buildTop10(players: ReturnType<typeof getCompetitors>) {
+function buildTop10(players: ReturnType<typeof getCompetitors>, par = 72) {
+  const totalPar = par * 4;
   const mapped = players.map((p) => {
     const pos = parsePosition(p.status?.position?.shortDisplayName);
     const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
     const scoreVal = p.score?.value ?? null;
-    // If score.value > 100 it's total strokes (historical events); otherwise score-to-par
+    const winner = p.score?.winner ?? false;
+    // score.value > 100 = total strokes (completed historical events); <= 100 = score-to-par (live)
     const totalScoreToPar =
-      scoreVal != null && Math.abs(scoreVal) <= 100 ? Math.round(scoreVal) : 0;
+      scoreVal == null
+        ? 0
+        : Math.abs(scoreVal) <= 100
+          ? Math.round(scoreVal)
+          : Math.round(scoreVal) - totalPar;
     return {
       pos,
       firstName,
       lastName,
       totalScoreToPar,
       scoreVal,
+      winner,
       rounds: p.linescores?.length ?? 0,
       earnings: extractEarnings(p.statistics) ?? 0,
     };
@@ -134,10 +142,14 @@ function buildTop10(players: ReturnType<typeof getCompetitors>) {
   }
 
   // Fallback: for completed events where status.position isn't populated,
-  // sort 4-round finishers by total score ascending (lower strokes = better).
+  // sort 4-round finishers by total strokes ascending; winner (playoff) sorts first.
   const finishers = mapped
     .filter((p) => p.rounds >= 4 && p.scoreVal != null)
-    .sort((a, b) => (a.scoreVal ?? 0) - (b.scoreVal ?? 0));
+    .sort((a, b) => {
+      if (a.winner && !b.winner) return -1;
+      if (!a.winner && b.winner) return 1;
+      return (a.scoreVal ?? 0) - (b.scoreVal ?? 0);
+    });
 
   return finishers.slice(0, 10).map((p, i) => ({
     position: i + 1,
