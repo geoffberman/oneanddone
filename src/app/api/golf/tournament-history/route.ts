@@ -4,11 +4,13 @@ import { tournaments, seasons } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
   getCurrentSeasonYear,
+  fetchCoreApiSchedule,
   fetchEventLeaderboard,
   splitDisplayName,
   parsePosition,
   extractEarnings,
   getCompetitors,
+  type EspnTournament,
 } from "@/lib/espn/client";
 
 export const maxDuration = 60;
@@ -32,7 +34,7 @@ function normalizeName(name: string): string {
   return name
     .toLowerCase()
     .replace(/^the\s+/, "")
-    .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
+    .replace(/\s+(presented?|powered|sponsored|pres\.?)\s+by\s+.*/i, "")
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -42,6 +44,44 @@ function fuzzyMatch(a: string, b: string): boolean {
   const na = normalizeName(a);
   const nb = normalizeName(b);
   return na === nb || na.includes(nb) || nb.includes(na);
+}
+
+/** Find ESPN event ID for a tournament name in a given year.
+ *  Tries the DB first; falls back to ESPN schedule API. */
+async function findEspnEventId(
+  name: string,
+  year: number
+): Promise<number | null> {
+  // 1. Try DB
+  const [season] = await db
+    .select({ id: seasons.id })
+    .from(seasons)
+    .where(eq(seasons.year, year))
+    .limit(1);
+
+  if (season) {
+    const seasonTournaments = await db
+      .select({
+        externalTournamentId: tournaments.externalTournamentId,
+        name: tournaments.name,
+      })
+      .from(tournaments)
+      .where(and(eq(tournaments.seasonId, season.id), eq(tournaments.canceled, false)));
+
+    const match = seasonTournaments.find((t) => fuzzyMatch(t.name, name));
+    if (match?.externalTournamentId) return match.externalTournamentId;
+  }
+
+  // 2. Fallback: ESPN schedule API
+  try {
+    const espnTournaments: EspnTournament[] = await fetchCoreApiSchedule(year);
+    const match = espnTournaments.find((t) => fuzzyMatch(t.name, name));
+    if (match) return parseInt(match.id, 10);
+  } catch (err) {
+    console.error(`[TournamentHistory] ESPN schedule fallback failed for ${year}:`, err);
+  }
+
+  return null;
 }
 
 async function getTournamentHistory(name: string): Promise<YearResult[]> {
@@ -56,32 +96,14 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
 
   for (const year of [currentYear - 1, currentYear - 2, currentYear - 3]) {
     try {
-      // Find the season in DB
-      const [season] = await db
-        .select({ id: seasons.id })
-        .from(seasons)
-        .where(eq(seasons.year, year))
-        .limit(1);
-      if (!season) continue;
-
-      // Find matching tournament in DB for this season
-      const seasonTournaments = await db
-        .select({
-          externalTournamentId: tournaments.externalTournamentId,
-          name: tournaments.name,
-        })
-        .from(tournaments)
-        .where(and(eq(tournaments.seasonId, season.id), eq(tournaments.canceled, false)));
-
-      const match = seasonTournaments.find((t) => fuzzyMatch(t.name, name));
-      if (!match?.externalTournamentId) continue;
+      const espnId = await findEspnEventId(name, year);
+      if (!espnId || isNaN(espnId)) continue;
 
       // Fetch ESPN leaderboard for this event
-      const data = await fetchEventLeaderboard(match.externalTournamentId);
+      const data = await fetchEventLeaderboard(espnId);
       const allEvents = data.events ?? data.tournaments ?? [];
       const espnEvent =
-        allEvents.find((t) => parseInt(t.id, 10) === match.externalTournamentId) ??
-        allEvents[0];
+        allEvents.find((t) => parseInt(t.id, 10) === espnId) ?? allEvents[0];
       if (!espnEvent) continue;
 
       const players = getCompetitors(espnEvent);

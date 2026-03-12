@@ -78,7 +78,7 @@ export async function getSeasonTournaments(seasonId: number) {
   const normalizeForDedup = (name: string) => {
     let norm = name
       .replace(/^the\s+/i, "")
-      .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
+      .replace(/\s+(presented?|powered|sponsored|pres\.?)\s+by\s+.*/i, "")
       .trim()
       .toLowerCase();
     // "The Open" is the common short name for "The Open Championship"
