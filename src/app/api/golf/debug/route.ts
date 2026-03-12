@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
       // Show full raw structure of first player so we can see all available fields
       const rawFirst = players[0] ? {
         id: players[0].id,
+        winner: players[0].winner,
         score: players[0].score,
         status: players[0].status,
         statistics: players[0].statistics,

@@ -106,7 +106,7 @@ function buildTop10(players: ReturnType<typeof getCompetitors>, par = 72) {
     const pos = parsePosition(p.status?.position?.shortDisplayName);
     const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
     const scoreVal = p.score?.value ?? null;
-    const winner = p.score?.winner ?? false;
+    const winner = p.winner ?? p.score?.winner ?? false;
     // score.value > 100 = total strokes (completed historical events); <= 100 = score-to-par (live)
     const totalScoreToPar =
       scoreVal == null
