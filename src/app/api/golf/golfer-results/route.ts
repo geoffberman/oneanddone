@@ -101,8 +101,16 @@ async function getGolferTournamentHistory(
       let position = parsePosition(pos);
       const scoreVal = player.score?.value ?? null;
 
-      // For completed events where status.position isn't populated, derive from total strokes rank
+      // For completed events where status.position isn't populated, derive from total strokes rank.
+      // Linescores are CUMULATIVE score-to-par; the last period includes playoff holes,
+      // so the playoff winner naturally has a lower value than the loser.
       if (position == null && isOver) {
+        const lastLsValue = (p: typeof player) => {
+          const ls = (p.linescores ?? []).slice().sort((a, b) => a.period.number - b.period.number);
+          const last = ls[ls.length - 1];
+          if (last != null && Math.abs(last.value) <= 100) return last.value;
+          return p.score?.value ?? Infinity;
+        };
         const finishers = players
           .filter((p) => {
             const pu = p.status?.position?.shortDisplayName?.toUpperCase();
@@ -117,7 +125,7 @@ async function getGolferTournamentHistory(
             const bWin = b.winner ?? b.score?.winner ?? false;
             if (aWin && !bWin) return -1;
             if (!aWin && bWin) return 1;
-            return (a.score!.value) - (b.score!.value);
+            return lastLsValue(a) - lastLsValue(b);
           });
         const idx = finishers.findIndex((p) => parseInt(p.id, 10) === espnPlayerId);
         if (idx === -1) continue; // player didn't finish 4 rounds
