@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/db";
+import { tournaments, seasons } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 import {
-  fetchCurrentSeason,
-  fetchTournamentsBySeason,
-  fetchLeaderboard,
-} from "@/lib/sportsdata/client";
-import { matchesTournamentName } from "@/lib/sportsdata/tournament-match";
+  getCurrentSeasonYear,
+  fetchEventLeaderboard,
+  splitDisplayName,
+  parsePosition,
+  extractEarnings,
+  getCompetitors,
+} from "@/lib/espn/client";
 
 export const maxDuration = 60;
 
@@ -23,13 +28,20 @@ interface YearResult {
 const cache = new Map<string, { data: YearResult[]; ts: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-function getPlayerName(p: Record<string, unknown>): { first: string; last: string } {
-  if (p.FirstName && p.LastName) return { first: String(p.FirstName), last: String(p.LastName) };
-  if (p.Name) {
-    const parts = String(p.Name).split(" ");
-    return { first: parts[0] || "?", last: parts.slice(1).join(" ") || "?" };
-  }
-  return { first: "?", last: "?" };
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/^the\s+/, "")
+    .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fuzzyMatch(a: string, b: string): boolean {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  return na === nb || na.includes(nb) || nb.includes(na);
 }
 
 async function getTournamentHistory(name: string): Promise<YearResult[]> {
@@ -39,36 +51,64 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
     return cached.data;
   }
 
-  const currentSeason = await fetchCurrentSeason();
-  const currentYear = currentSeason.SeasonID;
+  const currentYear = getCurrentSeasonYear();
   const years: YearResult[] = [];
 
   for (const year of [currentYear - 1, currentYear - 2, currentYear - 3]) {
     try {
-      const tournaments = await fetchTournamentsBySeason(year);
-      const match = tournaments.find((t) =>
-        matchesTournamentName(t.Name, name)
-      );
-      if (!match) continue;
+      // Find the season in DB
+      const [season] = await db
+        .select({ id: seasons.id })
+        .from(seasons)
+        .where(eq(seasons.year, year))
+        .limit(1);
+      if (!season) continue;
 
-      const leaderboard = await fetchLeaderboard(match.TournamentID);
-      const players = leaderboard.Players ?? [];
+      // Find matching tournament in DB for this season
+      const seasonTournaments = await db
+        .select({
+          externalTournamentId: tournaments.externalTournamentId,
+          name: tournaments.name,
+        })
+        .from(tournaments)
+        .where(and(eq(tournaments.seasonId, season.id), eq(tournaments.canceled, false)));
+
+      const match = seasonTournaments.find((t) => fuzzyMatch(t.name, name));
+      if (!match?.externalTournamentId) continue;
+
+      // Fetch ESPN leaderboard for this event
+      const data = await fetchEventLeaderboard(match.externalTournamentId);
+      const allEvents = data.events ?? data.tournaments ?? [];
+      const espnEvent =
+        allEvents.find((t) => parseInt(t.id, 10) === match.externalTournamentId) ??
+        allEvents[0];
+      if (!espnEvent) continue;
+
+      const players = getCompetitors(espnEvent);
       if (players.length === 0) continue;
 
       const top10 = players
-        .filter((p) => p.Rank > 0 && (p.MadeCut == null || p.MadeCut >= 0.5))
-        .sort((a, b) => a.Rank - b.Rank)
-        .slice(0, 10)
         .map((p) => {
-          const { first, last } = getPlayerName(p as unknown as Record<string, unknown>);
+          const pos = parsePosition(p.status?.position?.shortDisplayName);
+          const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
           return {
-            position: Math.round(p.Rank),
-            firstName: first,
-            lastName: last,
-            totalScoreToPar: Math.round(p.TotalScore),
-            earnings: p.Earnings,
+            pos,
+            firstName,
+            lastName,
+            totalScoreToPar: p.score?.value != null ? Math.round(p.score.value) : 0,
+            earnings: extractEarnings(p.statistics) ?? 0,
           };
-        });
+        })
+        .filter((p) => p.pos != null)
+        .sort((a, b) => (a.pos ?? 0) - (b.pos ?? 0))
+        .slice(0, 10)
+        .map((p) => ({
+          position: p.pos!,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          totalScoreToPar: p.totalScoreToPar,
+          earnings: p.earnings,
+        }));
 
       if (top10.length > 0) {
         years.push({ year, results: top10 });

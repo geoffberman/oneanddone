@@ -355,34 +355,36 @@ export async function POST(req: Request) {
           const extId = t.external_tournament_id as number;
           diag.testingTournament = { name: t.name, id: t.id, externalId: extId };
 
-          // 5. Fetch leaderboard from API
+          // 5. Fetch leaderboard from ESPN
           try {
-            const { fetchLeaderboard } = await import("@/lib/sportsdata/client");
-            const lb = await fetchLeaderboard(extId);
+            const { fetchEventLeaderboard, getCompetitors } = await import("@/lib/espn/client");
+            const data = await fetchEventLeaderboard(extId);
+            const allEvents = data.events ?? data.tournaments ?? [];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const event = allEvents.find((e: any) => parseInt(e.id, 10) === extId) ?? allEvents[0];
+            const players = event ? getCompetitors(event) : [];
             diag.leaderboardTournament = {
-              IsOver: lb.Tournament.IsOver,
-              IsInProgress: lb.Tournament.IsInProgress,
+              IsOver: event?.status?.type?.completed ?? false,
+              IsInProgress: event?.status?.type?.state === "in",
             };
-            diag.leaderboardPlayerCount = lb.Players?.length ?? 0;
+            diag.leaderboardPlayerCount = players.length;
 
             // Show first 3 players as sample
-            diag.samplePlayers = (lb.Players || []).slice(0, 3).map((p) => ({
-              PlayerID: p.PlayerID,
-              Name: `${p.FirstName} ${p.LastName}`,
-              Rank: p.Rank,
-              Earnings: p.Earnings,
-              TotalScore: p.TotalScore,
-              TotalStrokes: p.TotalStrokes,
-              MadeCut: p.MadeCut,
-              Rounds: p.Rounds?.length,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            diag.samplePlayers = players.slice(0, 3).map((p: any) => ({
+              espnId: p.id,
+              Name: p.athlete.displayName,
+              Position: p.status?.position?.shortDisplayName,
+              Score: p.score?.value,
             }));
 
-            // 6. Check golfer match rate using Drizzle (not raw sql)
-            if (lb.Players && lb.Players.length > 0) {
+            // 6. Check golfer match rate
+            if (players.length > 0) {
               try {
                 const { golfers: golfersTable } = await import("@/db/schema");
                 const { inArray: inArr } = await import("drizzle-orm");
-                const playerIds = lb.Players.map((p) => p.PlayerID);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const playerIds = players.map((p: any) => parseInt(p.id, 10)).filter(Number.isFinite);
                 const golferCheck = await db
                   .select({ id: golfersTable.id, externalPlayerId: golfersTable.externalPlayerId })
                   .from(golfersTable)
@@ -400,7 +402,7 @@ export async function POST(req: Request) {
 
           // 7. Run syncResults regardless of above checks
           try {
-            const { syncResults } = await import("@/lib/sportsdata/sync-results");
+            const { syncResults } = await import("@/lib/espn/sync-results");
             const syncResult = await syncResults();
             diag.syncResult = syncResult;
           } catch (syncErr) {
@@ -480,7 +482,7 @@ export async function POST(req: Request) {
       }
 
       try {
-        const { syncResults } = await import("@/lib/sportsdata/sync-results");
+        const { syncResults } = await import("@/lib/espn/sync-results");
         out.syncResults = await syncResults();
       } catch (e) { out.syncError = String(e); }
 

@@ -75,12 +75,16 @@ export async function getSeasonTournaments(seasonId: number) {
   // presented by Mastercard"). Strip sponsor suffixes and leading "The"
   // before comparing so those collapse to one entry. Keep the row with the
   // highest purse; fall back to whichever comes first if purses are equal.
-  const normalizeForDedup = (name: string) =>
-    name
+  const normalizeForDedup = (name: string) => {
+    let norm = name
       .replace(/^the\s+/i, "")
       .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
       .trim()
       .toLowerCase();
+    // "The Open" is the common short name for "The Open Championship"
+    if (norm === "open") norm = "open championship";
+    return norm;
+  };
 
   const byNorm = new Map<string, (typeof rows)[0]>();
   for (const t of rows) {

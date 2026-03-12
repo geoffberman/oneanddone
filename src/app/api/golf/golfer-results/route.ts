@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { golfers } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { golfers, tournaments, seasons } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 import {
-  fetchCurrentSeason,
-  fetchTournamentsBySeason,
-  fetchLeaderboard,
-} from "@/lib/sportsdata/client";
-import { matchesTournamentName } from "@/lib/sportsdata/tournament-match";
+  getCurrentSeasonYear,
+  fetchEventLeaderboard,
+  parsePosition,
+  extractEarnings,
+  getCompetitors,
+  madeCut,
+} from "@/lib/espn/client";
 
 export const maxDuration = 60;
 
@@ -23,46 +25,84 @@ interface GolferYearResult {
 const cache = new Map<string, { data: GolferYearResult[]; ts: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/^the\s+/, "")
+    .replace(/\s+(presented|powered|sponsored)\s+by\s+.*/i, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fuzzyMatch(a: string, b: string): boolean {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  return na === nb || na.includes(nb) || nb.includes(na);
+}
+
 async function getGolferTournamentHistory(
   tournamentName: string,
-  externalPlayerId: number
+  espnPlayerId: number
 ): Promise<GolferYearResult[]> {
-  const cacheKey = `golfer:${tournamentName}:${externalPlayerId}`;
+  const cacheKey = `golfer:${tournamentName}:${espnPlayerId}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) {
     return cached.data;
   }
 
-  const currentSeason = await fetchCurrentSeason();
-  // Use Season (the actual year, e.g. 2026) not SeasonID (which may differ)
-  const currentYear = currentSeason.Season;
+  const currentYear = getCurrentSeasonYear();
   const results: GolferYearResult[] = [];
 
   for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
     try {
-      const tournaments = await fetchTournamentsBySeason(year);
-      const match = tournaments.find((t) =>
-        matchesTournamentName(t.Name, tournamentName)
-      );
-      if (!match) continue;
+      const [season] = await db
+        .select({ id: seasons.id })
+        .from(seasons)
+        .where(eq(seasons.year, year))
+        .limit(1);
+      if (!season) continue;
 
-      const leaderboard = await fetchLeaderboard(match.TournamentID);
-      const players = leaderboard.Players ?? [];
-      if (players.length === 0) continue;
+      const seasonTournaments = await db
+        .select({
+          externalTournamentId: tournaments.externalTournamentId,
+          name: tournaments.name,
+        })
+        .from(tournaments)
+        .where(and(eq(tournaments.seasonId, season.id), eq(tournaments.canceled, false)));
 
-      // Match by PlayerID — reliable even when FirstName/LastName are missing
-      const player = players.find((p) => p.PlayerID === externalPlayerId);
+      const match = seasonTournaments.find((t) => fuzzyMatch(t.name, tournamentName));
+      if (!match?.externalTournamentId) continue;
+
+      const data = await fetchEventLeaderboard(match.externalTournamentId);
+      const allEvents = data.events ?? data.tournaments ?? [];
+      const espnEvent =
+        allEvents.find((t) => parseInt(t.id, 10) === match.externalTournamentId) ??
+        allEvents[0];
+      if (!espnEvent) continue;
+
+      const isOver =
+        espnEvent.status.type.completed && espnEvent.status.type.state === "post";
+      const players = getCompetitors(espnEvent);
+      const player = players.find((p) => parseInt(p.id, 10) === espnPlayerId);
       if (!player) continue;
+
+      const pos = player.status?.position?.shortDisplayName;
+      const position = parsePosition(pos);
+      if (position == null) continue; // skip CUT/WD/DQ
 
       results.push({
         year,
-        position: Math.round(player.Rank),
-        totalScoreToPar: Math.round(player.TotalScore),
-        earnings: player.Earnings,
-        madeCut: player.MadeCut != null ? player.MadeCut >= 0.5 : false,
+        position,
+        totalScoreToPar: player.score?.value != null ? Math.round(player.score.value) : 0,
+        earnings: extractEarnings(player.statistics) ?? 0,
+        madeCut: madeCut(pos, isOver) ?? false,
       });
     } catch (err) {
-      console.error(`[GolferResults] Error fetching ${year} for player ${externalPlayerId} at "${tournamentName}":`, err);
+      console.error(
+        `[GolferResults] Error fetching ${year} for player ${espnPlayerId} at "${tournamentName}":`,
+        err
+      );
     }
   }
 
@@ -90,7 +130,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Look up external player ID from DB
     const [golfer] = await db
       .select({ externalPlayerId: golfers.externalPlayerId })
       .from(golfers)
@@ -101,10 +140,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ results: [] });
     }
 
-    const results = await getGolferTournamentHistory(
-      tournamentName,
-      golfer.externalPlayerId
-    );
+    const results = await getGolferTournamentHistory(tournamentName, golfer.externalPlayerId);
     return NextResponse.json({ results });
   } catch {
     return NextResponse.json(
