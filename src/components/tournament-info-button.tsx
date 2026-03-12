@@ -109,7 +109,6 @@ export function TournamentInfoButton({
                       <th className="w-8 py-1">Pos</th>
                       <th className="py-1">Player</th>
                       <th className="py-1 text-right">Score</th>
-                      <th className="py-1 text-right">Earnings</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -121,9 +120,6 @@ export function TournamentInfoButton({
                         </td>
                         <td className="py-1 text-right">
                           {formatScore(r.totalScoreToPar)}
-                        </td>
-                        <td className="py-1 text-right">
-                          {formatEarnings(r.earnings)}
                         </td>
                       </tr>
                     ))}

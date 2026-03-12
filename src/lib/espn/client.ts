@@ -217,6 +217,8 @@ export interface EspnCourse {
 export interface EspnCompetitor {
   id: string;
   uid?: string;
+  /** Top-level winner flag set by ESPN for completed events */
+  winner?: boolean;
   athlete: EspnAthlete;
   score?: {
     value: number;

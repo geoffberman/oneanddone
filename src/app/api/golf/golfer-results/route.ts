@@ -113,8 +113,10 @@ async function getGolferTournamentHistory(
             );
           })
           .sort((a, b) => {
-            if (a.score?.winner && !b.score?.winner) return -1;
-            if (!a.score?.winner && b.score?.winner) return 1;
+            const aWin = a.winner ?? a.score?.winner ?? false;
+            const bWin = b.winner ?? b.score?.winner ?? false;
+            if (aWin && !bWin) return -1;
+            if (!aWin && bWin) return 1;
             return (a.score!.value) - (b.score!.value);
           });
         const idx = finishers.findIndex((p) => parseInt(p.id, 10) === espnPlayerId);

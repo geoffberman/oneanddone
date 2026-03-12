@@ -109,7 +109,6 @@ export function GolferInfoButton({
                   <th className="py-1.5">Year</th>
                   <th className="py-1.5 text-right">Finish</th>
                   <th className="py-1.5 text-right">Score</th>
-                  <th className="py-1.5 text-right">Earnings</th>
                 </tr>
               </thead>
               <tbody>
@@ -125,9 +124,6 @@ export function GolferInfoButton({
                     </td>
                     <td className="py-1.5 text-right">
                       {formatScore(r.totalScoreToPar)}
-                    </td>
-                    <td className="py-1.5 text-right">
-                      {formatEarnings(r.earnings)}
                     </td>
                   </tr>
                 ))}
