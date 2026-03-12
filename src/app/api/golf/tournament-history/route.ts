@@ -114,14 +114,24 @@ function buildTop10(players: ReturnType<typeof getCompetitors>, par = 72) {
         : Math.abs(scoreVal) <= 100
           ? Math.round(scoreVal)
           : Math.round(scoreVal) - totalPar;
+    // Linescores store CUMULATIVE score-to-par per round (period 1 = after R1, etc.)
+    // The last period's value includes playoff holes, so it correctly differentiates
+    // the playoff winner (e.g. Rory -20 after birdie) from the loser (JJ -19 unchanged).
+    const sortedLs = (p.linescores ?? []).slice().sort((a, b) => a.period.number - b.period.number);
+    const lastLs = sortedLs[sortedLs.length - 1];
+    const sortScore =
+      lastLs != null && Math.abs(lastLs.value) <= 100
+        ? lastLs.value          // cumulative score-to-par — lower is better
+        : (scoreVal ?? Infinity); // fallback to total strokes
     return {
       pos,
       firstName,
       lastName,
       totalScoreToPar,
       scoreVal,
+      sortScore,
       winner,
-      rounds: p.linescores?.length ?? 0,
+      rounds: sortedLs.length,
       earnings: extractEarnings(p.statistics) ?? 0,
     };
   });
@@ -141,13 +151,14 @@ function buildTop10(players: ReturnType<typeof getCompetitors>, par = 72) {
       }));
   }
 
-  // Fallback: sort by scoreVal ascending; winner flag breaks ties for playoff scenarios.
+  // Fallback: sort by last cumulative linescore ascending (includes playoff holes).
+  // winner flag is a secondary safety net in case linescores are unavailable.
   const finishers = mapped
     .filter((p) => p.rounds >= 4 && p.scoreVal != null)
     .sort((a, b) => {
       if (a.winner && !b.winner) return -1;
       if (!a.winner && b.winner) return 1;
-      return (a.scoreVal ?? 0) - (b.scoreVal ?? 0);
+      return a.sortScore - b.sortScore;
     });
 
   return finishers.slice(0, 10).map((p, i) => ({
