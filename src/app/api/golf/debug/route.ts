@@ -98,15 +98,13 @@ export async function GET(request: NextRequest) {
       const lastYear = currentYear - 1;
       const diag: Record<string, unknown> = { name, currentYear, lastYear, normalizedName: normalizeName(name) };
 
-      // Step 1: try fetchLeaderboard(lastYear)
+      // Step 1: fetchCoreApiSchedule(lastYear) — queries by calendar year
       try {
-        const seasonData = await fetchLeaderboard(lastYear);
-        const allEvents = seasonData.events ?? seasonData.tournaments ?? [];
-        diag.seasonLeaderboardYear = seasonData.season?.year;
-        diag.seasonEventCount = allEvents.length;
-        diag.seasonEventNames = allEvents.slice(0, 10).map(t => ({ id: t.id, name: t.name }));
+        const schedule = await fetchCoreApiSchedule(lastYear);
+        diag.coreApiEventCount = schedule.length;
+        diag.coreApiSampleNames = schedule.slice(0, 5).map(t => ({ id: t.id, name: t.name }));
 
-        const match = allEvents.find(t => {
+        const match = schedule.find(t => {
           const na = normalizeName(t.name);
           const nb = normalizeName(name);
           return na === nb || na.includes(nb) || nb.includes(na);
@@ -119,7 +117,7 @@ export async function GET(request: NextRequest) {
           const espnId = parseInt(match.id, 10);
           diag.espnId = espnId;
 
-          // Step 2: fetch event leaderboard
+          // Step 2: fetch event-specific leaderboard
           try {
             const eventData = await fetchEventLeaderboard(espnId);
             const events = eventData.events ?? eventData.tournaments ?? [];
@@ -140,7 +138,7 @@ export async function GET(request: NextRequest) {
           }
         }
       } catch (e) {
-        diag.seasonLeaderboardError = String(e);
+        diag.coreApiError = String(e);
       }
 
       return NextResponse.json(diag);
