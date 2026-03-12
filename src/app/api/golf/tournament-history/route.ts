@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import {
   getCurrentSeasonYear,
   fetchCoreApiSchedule,
+  fetchLeaderboard,
   fetchEventLeaderboard,
   splitDisplayName,
   extractEarnings,
@@ -62,6 +63,36 @@ async function findPastEventId(name: string, year: number): Promise<number | nul
   return match ? parseInt(match.id, 10) : null;
 }
 
+/** Fetch the completed ESPN event for a named tournament in a given past year.
+ *  Tries fetchLeaderboard(year) first (season-level, reliable for historical data),
+ *  then falls back to fetchEventLeaderboard(id) validated against completed status. */
+async function fetchCompletedEvent(name: string, year: number) {
+  // Strategy 1: season-level leaderboard — reliable for historical/completed events
+  try {
+    const data = await fetchLeaderboard(year);
+    const allEvents = data.events ?? data.tournaments ?? [];
+    const event = allEvents.find((t) =>
+      fuzzyMatch(t.name, name) && t.status?.type?.state === "post"
+    );
+    if (event) return event;
+  } catch {
+    // fall through to strategy 2
+  }
+
+  // Strategy 2: event-specific leaderboard — must validate it's actually completed
+  // (ESPN may return the CURRENT year's live tournament when queried by an old event ID)
+  const espnId = await findPastEventId(name, year);
+  if (!espnId || isNaN(espnId)) return null;
+
+  const data = await fetchEventLeaderboard(espnId);
+  const allEvents = data.events ?? data.tournaments ?? [];
+  const event = allEvents.find((t) => parseInt(t.id, 10) === espnId) ?? allEvents[0];
+
+  // Reject non-completed events — this prevents live 2026 data from leaking into 2025 results
+  if (!event || event.status?.type?.state !== "post") return null;
+  return event;
+}
+
 async function getTournamentHistory(name: string): Promise<YearResult[]> {
   const cacheKey = `history:${name}`;
   const cached = cache.get(cacheKey);
@@ -74,13 +105,7 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
   const years: YearResult[] = [];
 
   try {
-    const espnId = await findPastEventId(name, lastYear);
-    if (!espnId || isNaN(espnId)) return years;
-
-    const data = await fetchEventLeaderboard(espnId);
-    const allEvents = data.events ?? data.tournaments ?? [];
-    const espnEvent =
-      allEvents.find((t) => parseInt(t.id, 10) === espnId) ?? allEvents[0];
+    const espnEvent = await fetchCompletedEvent(name, lastYear);
     if (!espnEvent) return years;
 
     const par = espnEvent.courses?.[0]?.par ?? 72;
@@ -101,47 +126,28 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
 
 function buildTop10(players: ReturnType<typeof getCompetitors>, par = 72) {
   const totalPar = par * 4;
-  const mapped = players.map((p) => {
-    const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
-    const scoreVal = p.score?.value ?? null;
-    const winner = p.winner ?? p.score?.winner ?? false;
-    // score.value > 100 = total strokes (completed historical events); <= 100 = score-to-par (live)
-    const totalScoreToPar =
-      scoreVal == null
-        ? 0
-        : Math.abs(scoreVal) <= 100
+
+  // Sort directly by score.value (lower = better in both total-strokes and score-to-par formats).
+  // Do NOT use linescores for sorting: for historical events ESPN stores per-round stroke counts
+  // in linescores (e.g. 68, 67, 66, 65), not cumulative score-to-par. Values ≤100 from the last
+  // linescore would be a single-round score, scrambling the overall sort.
+  // The winner flag breaks playoff ties (winner's score.value equals the runner-up's).
+  const finishers = players
+    .filter((p) => p.score?.value != null)
+    .map((p) => {
+      const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
+      const scoreVal = p.score!.value;
+      const winner = p.winner ?? p.score?.winner ?? false;
+      const totalScoreToPar =
+        Math.abs(scoreVal) <= 100
           ? Math.round(scoreVal)
           : Math.round(scoreVal) - totalPar;
-    // Linescores store CUMULATIVE score-to-par per round (period 1 = after R1, etc.)
-    // The last period's value includes playoff holes, so it correctly differentiates
-    // the playoff winner (e.g. Rory -20 after birdie) from the loser (JJ -19 unchanged).
-    const sortedLs = (p.linescores ?? []).slice().sort((a, b) => a.period.number - b.period.number);
-    const lastLs = sortedLs[sortedLs.length - 1];
-    const sortScore =
-      lastLs != null && Math.abs(lastLs.value) <= 100
-        ? lastLs.value          // cumulative score-to-par — lower is better
-        : (scoreVal ?? Infinity); // fallback to total strokes
-    return {
-      firstName,
-      lastName,
-      totalScoreToPar,
-      scoreVal,
-      sortScore,
-      winner,
-      rounds: sortedLs.length,
-      earnings: extractEarnings(p.statistics) ?? 0,
-    };
-  });
-
-  // Always sort by score for completed historical events — ESPN's status.position
-  // is unreliable for past events (may reflect field order, not final standings).
-  // Linescores include playoff holes so the playoff winner naturally sorts first.
-  const finishers = mapped
-    .filter((p) => p.rounds >= 4 && p.scoreVal != null)
+      return { firstName, lastName, totalScoreToPar, scoreVal, winner, earnings: extractEarnings(p.statistics) ?? 0 };
+    })
     .sort((a, b) => {
       if (a.winner && !b.winner) return -1;
       if (!a.winner && b.winner) return 1;
-      return a.sortScore - b.sortScore;
+      return a.scoreVal - b.scoreVal; // lower total strokes or lower score-to-par = better
     });
 
   return finishers.slice(0, 10).map((p, i) => ({
