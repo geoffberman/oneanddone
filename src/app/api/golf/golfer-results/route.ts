@@ -4,13 +4,12 @@ import { golfers, tournaments, seasons } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
   getCurrentSeasonYear,
-  fetchCoreApiSchedule,
+  fetchLeaderboard,
   fetchEventLeaderboard,
   parsePosition,
   extractEarnings,
   getCompetitors,
   madeCut,
-  type EspnTournament,
 } from "@/lib/espn/client";
 
 export const maxDuration = 60;
@@ -44,11 +43,8 @@ function fuzzyMatch(a: string, b: string): boolean {
 }
 
 /** Find ESPN event ID for a tournament name in a given year.
- *  Tries the DB first; falls back to ESPN schedule API. */
-async function findEspnEventId(
-  name: string,
-  year: number
-): Promise<number | null> {
+ *  Tries the DB first, then falls back to the season leaderboard endpoint. */
+async function findEspnEventId(name: string, year: number): Promise<number | null> {
   // 1. Try DB
   const [season] = await db
     .select({ id: seasons.id })
@@ -69,13 +65,14 @@ async function findEspnEventId(
     if (match?.externalTournamentId) return match.externalTournamentId;
   }
 
-  // 2. Fallback: ESPN schedule API
+  // 2. Fallback: ESPN season leaderboard (same endpoint sync-results uses)
   try {
-    const espnTournaments: EspnTournament[] = await fetchCoreApiSchedule(year);
-    const match = espnTournaments.find((t) => fuzzyMatch(t.name, name));
+    const seasonData = await fetchLeaderboard(year);
+    const allEvents = seasonData.events ?? seasonData.tournaments ?? [];
+    const match = allEvents.find((t) => fuzzyMatch(t.name, name));
     if (match) return parseInt(match.id, 10);
   } catch (err) {
-    console.error(`[GolferResults] ESPN schedule fallback failed for ${year}:`, err);
+    console.error(`[GolferResults] Season leaderboard fallback failed for ${year}:`, err);
   }
 
   return null;
@@ -94,7 +91,8 @@ async function getGolferTournamentHistory(
   const currentYear = getCurrentSeasonYear();
   const results: GolferYearResult[] = [];
 
-  for (const year of [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]) {
+  // Check current year + last year
+  for (const year of [currentYear, currentYear - 1]) {
     try {
       const espnId = await findEspnEventId(tournamentName, year);
       if (!espnId || isNaN(espnId)) continue;
