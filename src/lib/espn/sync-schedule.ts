@@ -6,17 +6,8 @@ import {
   getCurrentSeasonYear,
   parsePurse,
   getTournamentLocation,
+  normalizeName,
 } from "./client";
-
-function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/^the\s+/, "")
-    .replace(/\s+(presented?|powered|sponsored|pres\.?)\s+by\s+.*/i, "")
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 export async function syncSchedule() {
   const year = getCurrentSeasonYear();
