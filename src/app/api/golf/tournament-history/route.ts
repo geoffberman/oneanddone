@@ -4,7 +4,7 @@ import { tournaments, seasons } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
   getCurrentSeasonYear,
-  fetchLeaderboard,
+  fetchCoreApiSchedule,
   fetchEventLeaderboard,
   splitDisplayName,
   parsePosition,
@@ -36,6 +36,33 @@ function fuzzyMatch(a: string, b: string): boolean {
   return na === nb || na.includes(nb) || nb.includes(na);
 }
 
+/** Find the ESPN event ID for a given tournament name in a past year.
+ *  Tries the DB first; falls back to ESPN Core API schedule (dates=year). */
+async function findPastEventId(name: string, year: number): Promise<number | null> {
+  // 1. Try DB (works if we have past year season data)
+  const [season] = await db
+    .select({ id: seasons.id })
+    .from(seasons)
+    .where(eq(seasons.year, year))
+    .limit(1);
+
+  if (season) {
+    const rows = await db
+      .select({ externalTournamentId: tournaments.externalTournamentId, name: tournaments.name })
+      .from(tournaments)
+      .where(and(eq(tournaments.seasonId, season.id), eq(tournaments.canceled, false)));
+
+    const match = rows.find((t) => fuzzyMatch(t.name, name));
+    if (match?.externalTournamentId) return match.externalTournamentId;
+  }
+
+  // 2. Fallback: ESPN Core API — queries by calendar year (dates=YYYY)
+  //    Returns the full schedule for that year regardless of current season.
+  const schedule = await fetchCoreApiSchedule(year);
+  const match = schedule.find((t) => fuzzyMatch(t.name, name));
+  return match ? parseInt(match.id, 10) : null;
+}
+
 async function getTournamentHistory(name: string): Promise<YearResult[]> {
   const cacheKey = `history:${name}`;
   const cached = cache.get(cacheKey);
@@ -48,58 +75,9 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
   const years: YearResult[] = [];
 
   try {
-    // Step 1: find the ESPN event ID for last year's tournament.
-    // Try DB first, then fall back to the season leaderboard endpoint
-    // (same site.web.api.espn.com domain that sync-results already uses).
-    let espnId: number | null = null;
-
-    const [season] = await db
-      .select({ id: seasons.id })
-      .from(seasons)
-      .where(eq(seasons.year, lastYear))
-      .limit(1);
-
-    if (season) {
-      const seasonTournaments = await db
-        .select({
-          externalTournamentId: tournaments.externalTournamentId,
-          name: tournaments.name,
-        })
-        .from(tournaments)
-        .where(and(eq(tournaments.seasonId, season.id), eq(tournaments.canceled, false)));
-
-      const match = seasonTournaments.find((t) => fuzzyMatch(t.name, name));
-      if (match?.externalTournamentId) espnId = match.externalTournamentId;
-    }
-
-    // Fallback: fetch the full season leaderboard for last year.
-    // /leaderboard?season=YYYY returns all events for that PGA season.
-    if (!espnId) {
-      try {
-        const seasonData = await fetchLeaderboard(lastYear);
-        const allEvents = seasonData.events ?? seasonData.tournaments ?? [];
-        const match = allEvents.find((t) => fuzzyMatch(t.name, name));
-        if (match) {
-          espnId = parseInt(match.id, 10);
-          // If the season leaderboard already has competitor data, use it
-          const players = getCompetitors(match);
-          if (players.length > 0) {
-            const top10 = buildTop10(players);
-            if (top10.length > 0) {
-              years.push({ year: lastYear, results: top10 });
-              cache.set(cacheKey, { data: years, ts: Date.now() });
-              return years;
-            }
-          }
-        }
-      } catch (err) {
-        console.error(`[TournamentHistory] Season leaderboard fallback failed for ${lastYear}:`, err);
-      }
-    }
-
+    const espnId = await findPastEventId(name, lastYear);
     if (!espnId || isNaN(espnId)) return years;
 
-    // Step 2: fetch the event-specific leaderboard
     const data = await fetchEventLeaderboard(espnId);
     const allEvents = data.events ?? data.tournaments ?? [];
     const espnEvent =

@@ -4,7 +4,7 @@ import { golfers, tournaments, seasons } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
   getCurrentSeasonYear,
-  fetchLeaderboard,
+  fetchCoreApiSchedule,
   fetchEventLeaderboard,
   parsePosition,
   extractEarnings,
@@ -34,9 +34,9 @@ function fuzzyMatch(a: string, b: string): boolean {
 }
 
 /** Find ESPN event ID for a tournament name in a given year.
- *  Tries the DB first, then falls back to the season leaderboard endpoint. */
+ *  Tries the DB first; falls back to ESPN Core API schedule (dates=year). */
 async function findEspnEventId(name: string, year: number): Promise<number | null> {
-  // 1. Try DB
+  // 1. Try DB (works if we have past year season data)
   const [season] = await db
     .select({ id: seasons.id })
     .from(seasons)
@@ -44,29 +44,19 @@ async function findEspnEventId(name: string, year: number): Promise<number | nul
     .limit(1);
 
   if (season) {
-    const seasonTournaments = await db
-      .select({
-        externalTournamentId: tournaments.externalTournamentId,
-        name: tournaments.name,
-      })
+    const rows = await db
+      .select({ externalTournamentId: tournaments.externalTournamentId, name: tournaments.name })
       .from(tournaments)
       .where(and(eq(tournaments.seasonId, season.id), eq(tournaments.canceled, false)));
 
-    const match = seasonTournaments.find((t) => fuzzyMatch(t.name, name));
+    const match = rows.find((t) => fuzzyMatch(t.name, name));
     if (match?.externalTournamentId) return match.externalTournamentId;
   }
 
-  // 2. Fallback: ESPN season leaderboard (same endpoint sync-results uses)
-  try {
-    const seasonData = await fetchLeaderboard(year);
-    const allEvents = seasonData.events ?? seasonData.tournaments ?? [];
-    const match = allEvents.find((t) => fuzzyMatch(t.name, name));
-    if (match) return parseInt(match.id, 10);
-  } catch (err) {
-    console.error(`[GolferResults] Season leaderboard fallback failed for ${year}:`, err);
-  }
-
-  return null;
+  // 2. Fallback: ESPN Core API — queries by calendar year (dates=YYYY)
+  const schedule = await fetchCoreApiSchedule(year);
+  const match = schedule.find((t) => fuzzyMatch(t.name, name));
+  return match ? parseInt(match.id, 10) : null;
 }
 
 async function getGolferTournamentHistory(
