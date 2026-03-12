@@ -93,13 +93,33 @@ async function getGolferTournamentHistory(
       const pos = player.status?.position?.shortDisplayName;
       const upper = pos?.toUpperCase();
 
-      // Skip explicitly cut or withdrawn players
-      if (upper === "WD" || upper === "DQ" || upper === "CUT" || upper === "MC" || upper === "MDF") {
+      // Skip withdrawn or disqualified — these aren't meaningful finishes
+      if (upper === "WD" || upper === "DQ") {
+        continue;
+      }
+
+      const scoreVal = player.score?.value ?? null;
+      const par = espnEvent.courses?.[0]?.par ?? 72;
+      const totalScoreToPar =
+        scoreVal == null
+          ? 0
+          : Math.abs(scoreVal) <= 100
+            ? Math.round(scoreVal)
+            : Math.round(scoreVal) - par * 4;
+
+      // Missed cut — record with madeCut: false
+      if (upper === "CUT" || upper === "MC" || upper === "MDF") {
+        results.push({
+          year,
+          position: 0,
+          totalScoreToPar,
+          earnings: 0,
+          madeCut: false,
+        });
         continue;
       }
 
       let position = parsePosition(pos);
-      const scoreVal = player.score?.value ?? null;
 
       // For completed events where status.position isn't populated, derive from total strokes rank.
       // Linescores are CUMULATIVE score-to-par; the last period includes playoff holes,
@@ -133,14 +153,6 @@ async function getGolferTournamentHistory(
       }
 
       if (position == null) continue; // can't determine position
-
-      const par = espnEvent.courses?.[0]?.par ?? 72;
-      const totalScoreToPar =
-        scoreVal == null
-          ? 0
-          : Math.abs(scoreVal) <= 100
-            ? Math.round(scoreVal)
-            : Math.round(scoreVal) - par * 4;
 
       results.push({
         year,
