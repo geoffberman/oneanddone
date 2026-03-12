@@ -100,28 +100,52 @@ async function getTournamentHistory(name: string): Promise<YearResult[]> {
 }
 
 function buildTop10(players: ReturnType<typeof getCompetitors>) {
-  return players
-    .map((p) => {
-      const pos = parsePosition(p.status?.position?.shortDisplayName);
-      const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
-      return {
-        pos,
-        firstName,
-        lastName,
-        totalScoreToPar: p.score?.value != null ? Math.round(p.score.value) : 0,
-        earnings: extractEarnings(p.statistics) ?? 0,
-      };
-    })
-    .filter((p) => p.pos != null)
-    .sort((a, b) => (a.pos ?? 0) - (b.pos ?? 0))
-    .slice(0, 10)
-    .map((p) => ({
-      position: p.pos!,
-      firstName: p.firstName,
-      lastName: p.lastName,
-      totalScoreToPar: p.totalScoreToPar,
-      earnings: p.earnings,
-    }));
+  const mapped = players.map((p) => {
+    const pos = parsePosition(p.status?.position?.shortDisplayName);
+    const { firstName, lastName } = splitDisplayName(p.athlete.displayName);
+    const scoreVal = p.score?.value ?? null;
+    // If score.value > 100 it's total strokes (historical events); otherwise score-to-par
+    const totalScoreToPar =
+      scoreVal != null && Math.abs(scoreVal) <= 100 ? Math.round(scoreVal) : 0;
+    return {
+      pos,
+      firstName,
+      lastName,
+      totalScoreToPar,
+      scoreVal,
+      rounds: p.linescores?.length ?? 0,
+      earnings: extractEarnings(p.statistics) ?? 0,
+    };
+  });
+
+  // Primary path: explicit numeric positions from status.position
+  const withPos = mapped.filter((p) => p.pos != null);
+  if (withPos.length >= 5) {
+    return withPos
+      .sort((a, b) => (a.pos ?? 0) - (b.pos ?? 0))
+      .slice(0, 10)
+      .map((p) => ({
+        position: p.pos!,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        totalScoreToPar: p.totalScoreToPar,
+        earnings: p.earnings,
+      }));
+  }
+
+  // Fallback: for completed events where status.position isn't populated,
+  // sort 4-round finishers by total score ascending (lower strokes = better).
+  const finishers = mapped
+    .filter((p) => p.rounds >= 4 && p.scoreVal != null)
+    .sort((a, b) => (a.scoreVal ?? 0) - (b.scoreVal ?? 0));
+
+  return finishers.slice(0, 10).map((p, i) => ({
+    position: i + 1,
+    firstName: p.firstName,
+    lastName: p.lastName,
+    totalScoreToPar: p.totalScoreToPar,
+    earnings: p.earnings,
+  }));
 }
 
 export async function GET(request: NextRequest) {
