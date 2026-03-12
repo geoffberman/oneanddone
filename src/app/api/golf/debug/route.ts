@@ -76,15 +76,27 @@ export async function GET(request: NextRequest) {
       const event =
         allEvents.find((t) => parseInt(t.id, 10) === id) ?? allEvents[0];
       const players = event ? getCompetitors(event) : [];
+      // Show full raw structure of first player so we can see all available fields
+      const rawFirst = players[0] ? {
+        id: players[0].id,
+        score: players[0].score,
+        status: players[0].status,
+        statistics: players[0].statistics,
+        linescoreCount: players[0].linescores?.length,
+      } : null;
       return NextResponse.json({
         event: event?.name,
         state: event?.status?.type?.state,
         playerCount: players.length,
+        rawFirstPlayer: rawFirst,
         samplePlayers: players.slice(0, 5).map((p) => ({
           id: p.id,
           name: p.athlete.displayName,
           position: p.status?.position?.shortDisplayName,
           score: p.score?.value,
+          scoreDisplay: p.score?.displayValue,
+          linescores: p.linescores?.length,
+          stats: p.statistics?.slice(0, 3),
         })),
       });
     }
